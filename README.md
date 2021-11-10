@@ -3,6 +3,8 @@ php-namumark는 나무위키에서 사용되는 나무마크를 python 언어를
 
 본 라이브러리는 koreapyj님의 [PHP-namumark](https://github.com/koreapyj/php-namumark) 를 참조해서 만들었습니다. 
 
+주의! 아직 실행되지 않는 코드입니다. 실행이 될 때 재공지하겠습니다.
+
 ## 라이선스
 본 라이브러리는 원본 소스에 따라 GNU Affero GPL 3.0에 따라 자유롭게 사용하실 수 있습니다. 
 

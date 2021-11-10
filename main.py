@@ -17,11 +17,12 @@ def main():
 
         parser = NamuMark(file_dict)
 
+        #HTML = parser.parse_HTML()
 
-        HTML = ""
+        mw = parser.parse_mw()
 
-        with open('HTML.txt', 'w', encoding='utf-8') as f2:
-            f2.write(HTML, ensure_ascii=False)
+        #with open('HTML.txt', 'w', encoding='utf-8') as f2:
+        #    f2.write(HTML, ensure_ascii=False)
 
 
 
