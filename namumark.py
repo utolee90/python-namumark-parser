@@ -221,10 +221,12 @@ class NamuMark:
     def mw_scan(self, text: str):
         # 결과
         result = ""
+        # 파서 적용할 결과
+        parser_result = ""
         # 텍스트를 줄 단위로 나누기
         strlines = text.split('\n')
         # 파서
-        macros = []
+        macros = ['none']
         parsed_texts = []
         # 한 줄 파서 목록
         inline_macros = []
@@ -236,11 +238,30 @@ class NamuMark:
             self.links = [{"target": target_link, "type": "redirect"}]
             return "#redirect [[{0}]]".format(target_link)
 
-        # 줄 단위로 패턴 검색
+        # 줄 단위로 패턴 검색후 파서 적용하기
         idx = 0
         while idx < len(strlines):
             cur_line = strlines[idx]
+            # 매크로가 동일할 때
+            if macros[-1] == self.get_pattern(cur_line):
+                parser_result += cur_line+'\n'
 
+
+
+    # 패턴 분석 함수 - 텍스트 통해서 패턴 분석
+    def get_pattern(self, text:str):
+        # 목록 형태
+        if re.match(r"^\s{1,6}(\*|1\.|A\.|a\.|I\.|i\.)", text):
+            return 'list'
+        # 블록 인용문
+        elif re.match(r"^>", text):
+            return 'bq'
+        # 표
+        elif re.match(r"^\|\|", text):
+            return 'table'
+        # 주석
+        elif re.match(r"^##", text):
+            return 'comment'
 
 
     # 헤딩 구조로 문서 나누어 분석하기. structure
@@ -335,8 +356,8 @@ class NamuMark:
             res = "{{숨김 끝}}\n"+res
             self.macros.remove('hiding_header')
 
-        if re.search(r'(=+#) .*? (#=+)', res):
-            res = re.sub(r'(=+)# (.*?) #(=+)', r'\1 \2 \3\n{{숨김 시작}}', res)
+        if re.search(r'(=+#)\s?.*?\s?(#=+)', res):
+            res = re.sub(r'(=+)#\s?(.*?)\s?#(=+)', r'\1 \2 \3\n{{숨김 시작}}', res)
             self.macros.append('hiding_header')
         
         return res
@@ -440,17 +461,46 @@ class NamuMark:
 
 
     # 리스트 파싱
-    def list_parser(self, text:str, offset:int):
+    # text는 공백 포함 목록형 나무마크 문법, offset은 공백 갯수
+    def list_parser(self, text:str):
+        # 리스트 테이블 형식
         list_table = []
-        strlen = len(text)
-        line_start = offset
+        # 라인별로 나누기
+        lines = text.split('\n')
+        # 결과값
+        res = ""
 
-        stop_func = False
+        # 줄별로 나누었을 때 첫칸은 공백 무조건.
+        for list_line in lines:
+            # 공백 갯수 - offset값 결정
+            lev = len(re.match(r"^(\s{1,5})", list_line).group(1))
+            list_table.append(self.list_line_parser(list_line, lev))
 
-        for i in range(offset, strlen):
-            pass
+        # 예시 :
+        # [{ul, 1, xxx}, {ul, 1, xxx}, {ol, 2, xxxx}, {ol, 2, xxxx}, {ul, 1, xxx}]
+
+        # list_table이 정의됐으니 이제 풀어서
+        # 타입과 레벨 값 결정
+        list_types = []
+        list_level = 0
+        for list_dict in list_table:
+            # 우선 레벨과 타입이같을 때 - li 추가
+            if list_types[-1] == list_dict['type'] and list_level == list_dict['level']:
+                pass
 
 
+
+    # 리스트 한줄 파싱,
+    # 결과 : {type: (유형), value: (li 태그 안에 파싱된 텍스트), offset: (레벨)}
+    def list_line_parser(self, text:str, offset:int):
+        for list_tag_set in self.list_tag:
+            # 순서 없는 목록
+            if text[offset] == "*":
+                return  {"type": "ul", "level": offset, "value": self.mw_scan(text[offset+1:])}
+            # 순서 있는 목록 - 1.에서 두 개의 문자 사용
+            elif text[offset:offset+2] == list_tag_set[0]:
+                return {"type": list_tag_set[1], "level": offset, "value": self.mw_scan(text[offset+2:])}
+        return  ""
 
 
 
