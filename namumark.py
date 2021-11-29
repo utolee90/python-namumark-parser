@@ -199,15 +199,15 @@ class NamuMark:
         return self.links
 
     # 파싱하기
-    def parse_HTML(self):
+    def parse_mw(self):
         if not self.WIKI_PAGE.title:
             return ""
         self.parsed = self.pre_parser(self.WIKI_PAGE['text'])
-        self.parsed = self.to_HTML(self.parsed)
+        self.parsed = self.to_mw(self.parsed)
         return self.parsed
 
     # HTML 바꾸기
-    def to_HTML(self, text:str):
+    def to_mw(self, text:str):
         res = ""
 
         # 넘겨주기 형식 - 빈문서로 처리
@@ -462,46 +462,83 @@ class NamuMark:
 
     # 리스트 파싱
     # text는 공백 포함 목록형 나무마크 문법, offset은 공백 갯수
-    def list_parser(self, text:str):
-        # 리스트 테이블 형식
+    # function for list_parser
+    def list_parser(self, text: str):
         list_table = []
-        # 라인별로 나누기
+        open_tag_list = []
         lines = text.split('\n')
-        # 결과값
-        res = ""
+        res = ''
 
-        # 줄별로 나누었을 때 첫칸은 공백 무조건.
+        # 파싱 준비
         for list_line in lines:
-            # 공백 갯수 - offset값 결정
-            lev = len(re.match(r"^(\s{1,5})", list_line).group(1))
-            list_table.append(self.list_line_parser(list_line, lev))
+            # 공백 갯수
+            res_line = self.list_line_parser(list_line)
+            list_table.append(res_line)
 
-        # 예시 :
-        # [{ul, 1, xxx}, {ul, 1, xxx}, {ol, 2, xxxx}, {ol, 2, xxxx}, {ul, 1, xxx}]
+        # 레벨 숫자
+        lvl = 0
+        tgn = ''
+        for tbl in list_table:
+            # 같은 레벨, 같은 태그명
+            if lvl == tbl['level'] and tgn == tbl['type']:
+                res += f"<li>{tbl['preparsed']}</li>\n"
+            # 같은 레벨, 태그명만 다를 때
+            elif lvl == tbl['level'] and tgn != tbl['type']:
+                # 태그 닫기
+                res += f"</{tgn[0:2]}>\n"
+                tgn = tbl['type']
+                open_tag_list[-1] = tgn
+                res += f"<{tbl['type']}>\n"
+                res += f"<li>{tbl['preparsed']}</li>\n"
+            # 레벨값보다 수준이 더 클 때
+            elif lvl + 1 == tbl['level']:
+                res += f"<{tbl['type']}>\n"
+                res += f"<li>{tbl['preparsed']}</li>\n"
+                lvl = tbl['level']
+                tgn = tbl['type']
+                open_tag_list.append(tbl['type'])
+            # 레벨값보다 수준이 더 작을 때
+            elif lvl > tbl['level']:
+                for tn in open_tag_list[:tbl['level'] - 1:-1]:
+                    res += f"</{tn[0:2]}>\n"
 
-        # list_table이 정의됐으니 이제 풀어서
-        # 타입과 레벨 값 결정
-        list_types = []
-        list_level = 0
-        for list_dict in list_table:
-            # 우선 레벨과 타입이같을 때 - li 추가
-            if list_types[-1] == list_dict['type'] and list_level == list_dict['level']:
-                pass
+                open_tag_list = open_tag_list[0:tbl['level']]
+                lvl = tbl['level']
+
+                if open_tag_list[-1] == tbl['type']:
+                    res += f"<li>{tbl['preparsed']}</li>\n"
+                    tgn = tbl['type']
+                else:
+                    res += f"</{open_tag_list[-1][0:2]}>\n"
+                    res += f"<{tbl['type']}>\n"
+                    res += f"<li>{tbl['preparsed']}</li>\n"
+                    tgn = tbl['type']
+
+        # 마지막으로 남아있으면...
+        for tgx in open_tag_list[::-1]:
+            res += f"</{tgx[0:2]}>\n"
+
+        return res
 
 
 
     # 리스트 한줄 파싱,
-    # 결과 : {type: (유형), value: (li 태그 안에 파싱된 텍스트), offset: (레벨)}
-    def list_line_parser(self, text:str, offset:int):
-        for list_tag_set in self.list_tag:
-            # 순서 없는 목록
-            if text[offset] == "*":
-                return  {"type": "ul", "level": offset, "value": self.mw_scan(text[offset+1:])}
-            # 순서 있는 목록 - 1.에서 두 개의 문자 사용
-            elif text[offset:offset+2] == list_tag_set[0]:
-                return {"type": list_tag_set[1], "level": offset, "value": self.mw_scan(text[offset+2:])}
-        return  ""
-
+    # 결과 : {type: (유형), preparsed: (li 태그 안에 파싱된 텍스트), level: (레벨)}
+    def list_line_parser(self, text: str):
+        res = {}
+        # 공백 갯수
+        spacing = len(re.match(r"^(\s{1,5})", text).group(1))
+        res['level'] = spacing
+        if text[spacing] == "*":
+            res['type'] = 'ul'
+            res['preparsed'] = text[spacing + 1:]
+        else:
+            for tg in self.list_tag[1:]:
+                if text[spacing:spacing + 2] == tg[0]:
+                    res['type'] = tg[1]
+                    res['preparsed'] = text[spacing + 2:]
+                    break
+        return res
 
 
 
