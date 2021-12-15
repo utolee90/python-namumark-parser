@@ -459,6 +459,11 @@ class NamuMark:
                 text_remain = text[len(text_head):]
                 color1, color2 = colors.group(1), colors.group(2)
 
+        else: # 멀티라인이 아닐 때 파싱
+            pass
+
+
+
 
     # 리스트 파싱
     # text는 공백 포함 목록형 나무마크 문법, offset은 공백 갯수
@@ -539,6 +544,47 @@ class NamuMark:
                     res['preparsed'] = text[spacing + 2:]
                     break
         return res
+    
+    # [매크로] 형식의 함수 처리하기
+    @staticmethod
+    def simple_macro_processor(text:str):
+        
+        const_macro_list = {
+            "br": "<br />",
+            "date": "{{#timel:Y-m-d H:i:sP}}",
+            "datetime": "{{#timel:Y-m-d H:i:sP}}",
+            "목차": "__TOC__",  # 일단 표시. 그러나 목차 길이가 충분히 길면 지울 생각
+                  "tableofcontents": "__TOC__",
+                                     "각주": "{{각주}}",
+            "footnote": "{{각주}}",
+            "clearfix": "{{-}}"
+        }
+        # 단순 텍스트일 때
+        if text in const_macro_list.keys():
+            return const_macro_list[text]
+
+        # 만 나이 표시
+        elif re.match(r"age\(\d\d\d\d-\d\d-\d\d\)", text):
+            yr = re.match(r"age\((\d\d\d\d)-(\d\d)-(\d\d)\)", text).group(1)
+            mn = re.match(r"age\((\d\d\d\d)-(\d\d)-(\d\d)\)", text).group(2)
+            dy = re.match(r"age\((\d\d\d\d)-(\d\d)-(\d\d)\)", text).group(3)
+            return f"{{{{#expr: {{{{현재년}}}} - {yr} - ({{{{현재월}}}} <= {mn} and {{{{현재일}}}} < {dy})}}}}"
+
+        # 잔여일수/경과일수 표시
+        elif re.match(r"dday\(\d\d\d\d-\d\d-\d\d\)", text):
+            yr = re.match(r"dday\((\d\d\d\d)-(\d\d)-(\d\d)\)", text).group(1)
+            mn = re.match(r"dday\((\d\d\d\d)-(\d\d)-(\d\d)\)", text).group(2)
+            dy = re.match(r"dday\((\d\d\d\d)-(\d\d)-(\d\d)\)", text).group(3)
+
+            return f"{{{{#ifexpr:{{{{#time:U|now}}}} - {{{{#time:U|{yr}-{mn}-{dy}}}}}>0|+}}}}{{{{#expr:floor (({{{{#time:U|now}}}} - {{{{#time:U|{yr}-{mn}-{dy}}}}})/86400)}}}}"
+
+        # 수식 기호
+        elif re.match(r"math\((.*)\)", text):
+            tex = re.match(r"math\((.*)\)", text).group(1)
+            return f"<math>{tex}</math>"
+
+        else: return ""
+
 
 
 
