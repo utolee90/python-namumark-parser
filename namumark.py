@@ -2,7 +2,7 @@ import re
 import string
 import os
 
-from template import *
+from template import WEB_COLOR_LIST, *
 from processor import Processor
 
 class PlainWikiPage:
@@ -364,7 +364,7 @@ class NamuMark:
 
     # 중괄호 여러줄 프로세싱. 기본적으로 문법 기호 포함.
     # 멀티라인일 때는 type = multi
-    def render_processor(self, text: str, type: str):
+    def render_processor(self, text: str, type: str=""):
         res = ""
         render_stack = [] # render_processor 안에 여러 기호가 있을 때
         # 여러 줄 표시. 즉 줄이 닫히지 않았을 때
@@ -460,7 +460,105 @@ class NamuMark:
                 color1, color2 = colors.group(1), colors.group(2)
 
         else: # 멀티라인이 아닐 때 파싱
-            pass
+            r = 0
+            res = ""
+            parsing_symbol = ['{', "[", '~', '-', '_', '^', ',']
+            # 낱말별로 검사
+            while r < len(text):
+                letter = text[r]
+                if letter in parsing_symbol:
+                    # 색깔 표현
+                    if letter == "{" and re.match(r"\{\{\{#(.*?) (.*?)}}}", text[r:]):
+                        color = re.match(r"\{\{\{#(.*?) (.*?)}}}", text[r:]).group(1)
+                        parsed = re.match(r"\{\{\{#(.*?) (.*?)}}}", text[r:]).group(2)
+                        r += 8 + len(color) + len(parsed)  # r값 늘리기
+                        if re.match(r"[0-9A-Fa-f]{6}", color):
+                            res += f"{{{{색|#{color}|{self.render_processor(parsed)}}}}}"
+                        elif re.match(r"[0-9A-Fa-f]{3}", color):
+                            res += f"{{{{색|#{color}|{self.render_processor(parsed)}}}}}"
+                        elif color in WEB_COLOR_LIST.keys():
+                            res += f"{{{{색|#{WEB_COLOR_LIST[color]}|{self.render_processor(parsed)}}}}}"
+                        else:  # 일단은 <nowiki>로 처리
+                            res += f"<nowiki>#{color} {parsed}</nowiki>"
+                    # 글씨 키우기/줄이기
+                    elif letter == "{" and re.match(r"\{\{\{(+|-)([1-5]) (.*?)}}}", text[r:]):
+                        sizer = re.match(r"\{\{\{(+|-)([1-5]) (.*?)}}}", text[r:]).group(1)
+                        num = int(re.match(r"\{\{\{(+|-)([1-5]) (.*?)}}}", text[r:]).group(2))
+                        parsed = re.match(r"\{\{\{(+|-)([1-5]) (.*?)}}}", text[r:]).group(3)
+                        r += 9 + len(parsed)
+                        base = self.render_processor(parsed)
+                        for _ in range(num):
+                            base = "<big>" + base + "</big>" if sizer == "+" else "<small>" + base + "</small>"
+                        res += base
+
+                    # 문법 무시
+                    elif letter == "{" and re.match(r"\{\{\{(.*?)}}}", text[r:]):
+                        parsed = re.match(r"\{\{\{(.*?)}}}", text[r:]).group(1)
+                        r += 6 + len(parsed)
+                        res += f"<nowiki>{parsed}</nowiki>"
+
+                    # 각주. 각주 내 각주 기호가 있을 경우 오류가 생길 수 있으므로 나중에 별도의 함수를 이용해서 해결할 예정.
+                    elif letter == "[" and re.match(r"\[\*(.*?) (.*?)]", text[r:]):
+                        refname = re.match(r"\[\*(.*?) (.*?)]", text[r:]).group(1)
+                        refcont = re.match(r"\[\*(.*?) (.*?)]", text[r:]).group(2)
+                        r += 4 + len(refname) + len(refcont)
+                        if refname == "":
+                            res += f"<ref>{self.render_processor(refcont)}</ref>"
+                        else:
+                            res + + f"<ref name=\"{refname}\">{self.render_processor(refcont)}</ref>"
+                    # 링크 처리 - 외부링크, 내부링크 공통처리
+                    elif letter == "[" and re.match(r"\[\[(.*?)]]", text[r:]):
+                        article = re.match(r"\[\[(.*?)(\|.*?)?]]", text[r:]).group(1)
+                        cont = re.match(r"\[\[(.*?)(\|.*?)?]]", text[r:]).group(2)[1:] #앞의 |기호는 빼고 파싱해야 함.
+                        r += len(re.match(r"\[\[(.*?)]]", text[r:]).group(0))
+                        res += self.link_processor(article, cont)
+
+                    # 매크로
+                    elif letter == "[" and re.match(r"\[([^\[*].*?)]", text[r:]):
+                        cont = re.match(r"\[(.*?)\]", text[r:]).group(1)
+                        r += 2 + len(cont)
+                        res += self.simple_macro_processor(cont)
+
+                    # 취소선1
+                    elif letter == "~" and re.match(r"~~(.*?)~~", text[r:]):
+                        cont = re.match(r"~~(.*?)~~", text[r:]).group(1)
+                        r += 4 + len(cont)
+                        res += f"<del>{self.render_processor(cont)}</del>"
+
+                    # 취소선2
+                    elif letter == "-" and re.match(r"--(.*?)--", text[r:]):
+                        cont = re.match(r"--(.*?)--", text[r:]).group(1)
+                        r += 4 + len(cont)
+                        res += f"<del>{self.render_processor(cont)}</del>"
+
+                    # 밑줄
+                    elif letter == "_" and re.match(r"__(.*?)__", text[r:]):
+                        cont = re.match(r"__(.*?)__", text[r:]).group(1)
+                        r += 4 + len(cont)
+                        res += f"<u>{self.render_processor(cont)}</u>"
+
+                    # 위 첨자
+                    elif letter == "^" and re.match(r"\^\^(.*?)\^\^", text[r:]):
+                        cont = re.match(r"\^\^(.*?)\^\^", text[r:]).group(1)
+                        r += 4 + len(cont)
+                        res += f"<sup>{self.render_processor(cont)}</sup>"
+
+                    # 아래첨자
+                    elif letter == "," and re.match(r",,(.*?),,", text[r:]):
+                        cont = re.match(r",,(.*?)^^", text[r:]).group(1)
+                        r += 4 + len(cont)
+                        res += f"<sub>{self.render_processor(cont)}</sub>"
+
+                    # 나머지
+                    else:
+                        res += letter
+                        r += 1
+                # 나머지 문자들 - 문법에서 사용되지 않으므로 처리하지 않음.
+                else:
+                    res += letter
+                    r += 1
+
+            return res
 
 
 
@@ -483,45 +581,88 @@ class NamuMark:
         # 레벨 숫자
         lvl = 0
         tgn = ''
-        for tbl in list_table:
-            # 같은 레벨, 같은 태그명
-            if lvl == tbl['level'] and tgn == tbl['type']:
-                res += f"<li>{tbl['preparsed']}</li>\n"
-            # 같은 레벨, 태그명만 다를 때
-            elif lvl == tbl['level'] and tgn != tbl['type']:
-                # 태그 닫기
-                res += f"</{tgn[0:2]}>\n"
-                tgn = tbl['type']
-                open_tag_list[-1] = tgn
-                res += f"<{tbl['type']}>\n"
-                res += f"<li>{tbl['preparsed']}</li>\n"
-            # 레벨값보다 수준이 더 클 때
-            elif lvl + 1 == tbl['level']:
-                res += f"<{tbl['type']}>\n"
-                res += f"<li>{tbl['preparsed']}</li>\n"
-                lvl = tbl['level']
-                tgn = tbl['type']
-                open_tag_list.append(tbl['type'])
-            # 레벨값보다 수준이 더 작을 때
-            elif lvl > tbl['level']:
-                for tn in open_tag_list[:tbl['level'] - 1:-1]:
-                    res += f"</{tn[0:2]}>\n"
+        tgn_total = ""
 
-                open_tag_list = open_tag_list[0:tbl['level']]
-                lvl = tbl['level']
+        # 우선 ul과 ol class="decimal"로만 구성되어 있을 때는 심플하게 파싱하기
+        list_table_kinds = set(map(lambda x: x['type'], list_table))
 
-                if open_tag_list[-1] == tbl['type']:
-                    res += f"<li>{tbl['preparsed']}</li>\n"
+        if list_table_kinds.issubset({'ul', 'ol class="decimal"'}):
+            for tbl in list_table:
+                # 레벨 숫자가 tbl보다 작을 때
+                if lvl< tbl['level']:
+                    diff = tbl['level'] - lvl
+                    tgn_total = tgn_total+"*"*diff if tbl['type'] == "ul" else tgn_total+"#"*diff
+                    lvl = tbl['level']
                     tgn = tbl['type']
-                else:
-                    res += f"</{open_tag_list[-1][0:2]}>\n"
+                    res += tgn_total + self.render_processor(tbl['preparsed']) + "\n"
+
+                # 레벨 숫자가 앞의 숫자와 동일
+                elif lvl == tbl['level'] and tgn == tbl['type']:
+                    res += tgn_total + self.render_processor(tbl['preparsed']) + "\n"
+
+                # 레벨 숫자가 앞의 숫자와 동일, 다른 타입
+                elif lvl == tbl['level'] and tgn != tbl['type']:
+                    tgn_total = tgn_total[:-1]+"*" if tbl['type'] == "ul" else tgn_total[:-1]+"#"
+                    tgn = tbl['type']
+                    res += tgn_total + self.render_processor(tbl['preparsed']) + "\n"
+
+                # 레벨 숫자가 앞의 숫자보다 작음,
+                elif lvl > tbl['level']:
+                    # 우선 기호부터 확인해보자
+                    tgn_total_level = tgn_total[tbl['level']-1] # 해당 단계에서 심볼부터 확인
+
+
+                    #레벨 기준으로 확인
+                    if (tgn_total_level == "*" and tbl['type'] == 'ul') or (tgn_total_level == "#" and tbl['type'] == 'ol class="decimal"'):
+                        # 그냥 컷을 함.
+                        tgn_total = tgn_total[:tbl['level']]
+                    else:
+                        tgn_total = tgn_total[:tbl['level']-1]+"*" if tbl['type'] == 'ul' else tgn_total[:tbl['level']-1]+"#"
+
+                    lvl = tbl['level']
+                    tgn = tbl['type']
+                    res += tgn_total + self.render_processor(tbl['preparsed']) + "\n"
+
+        else:
+            for tbl in list_table:
+                # 같은 레벨, 같은 태그명
+                if lvl == tbl['level'] and tgn == tbl['type']:
+                    res += f"<li>{self.render_processor(tbl['preparsed'])}</li>\n"
+                # 같은 레벨, 태그명만 다를 때
+                elif lvl == tbl['level'] and tgn != tbl['type']:
+                    # 태그 닫기
+                    res += f"</{tgn[0:2]}>\n"
+                    tgn = tbl['type']
+                    open_tag_list[-1] = tgn
                     res += f"<{tbl['type']}>\n"
-                    res += f"<li>{tbl['preparsed']}</li>\n"
+                    res += f"<li>{self.render_processor(tbl['preparsed'])}</li>\n"
+                # 레벨값보다 수준이 더 클 때
+                elif lvl + 1 == tbl['level']:
+                    res += f"<{tbl['type']}>\n"
+                    res += f"<li>{self.render_processor(tbl['preparsed'])}</li>\n"
+                    lvl = tbl['level']
                     tgn = tbl['type']
+                    open_tag_list.append(tbl['type'])
+                # 레벨값보다 수준이 더 작을 때
+                elif lvl > tbl['level']:
+                    for tn in open_tag_list[:tbl['level'] - 1:-1]:
+                        res += f"</{tn[0:2]}>\n"
 
-        # 마지막으로 남아있으면...
-        for tgx in open_tag_list[::-1]:
-            res += f"</{tgx[0:2]}>\n"
+                    open_tag_list = open_tag_list[0:tbl['level']]
+                    lvl = tbl['level']
+
+                    if open_tag_list[-1] == tbl['type']:
+                        res += f"<li>{self.render_processor(tbl['preparsed'])}</li>\n"
+                        tgn = tbl['type']
+                    else:
+                        res += f"</{open_tag_list[-1][0:2]}>\n"
+                        res += f"<{tbl['type']}>\n"
+                        res += f"<li>{self.render_processor(tbl['preparsed'])}</li>\n"
+                        tgn = tbl['type']
+
+            # 마지막으로 남아있으면...
+            for tgx in open_tag_list[::-1]:
+                res += f"</{tgx[0:2]}>\n"
 
         return res
 
@@ -583,7 +724,28 @@ class NamuMark:
             tex = re.match(r"math\((.*)\)", text).group(1)
             return f"<math>{tex}</math>"
 
+        # 앵커 기호
+        elif re.match(r"anchor\((.*)\)", text):
+            aname = re.match(r"anchor\((.*)\)", text).group(1)
+            return f"<span id='{aname}></span>"
+
         else: return ""
+
+    # link processor
+    def link_processor(self, text):
+        # 외부 링크
+        if re.match(r"https?://(.*)", link):
+            return f"{link}" if text == "" else f"[{link} {self.render_processor(text, '')}]"
+        # 문단기호 링크에 대비
+        elif re.match(r"$(.*?)#s\-(.*)", link):
+            article = re.match(r"$(.*?)#s\-(.*)", link).group(1)
+            paragraph = re.match(r"$(.*?)#s\-(.*)", link).group(2)
+            paragraph_list = paragraph.split(".")
+            paragraph_name = self.find_paragraph_by_index(paragraph_list)
+            return f"[[{article}#{paragraph_name}]]" if text == "" else f"[[{article}#{paragraph_name}|{self.render_processor(text, '')}]]"
+
+        else:
+            return f"[[{link}]]" if text == "" else f"[[{link}|{self.render_processor(text)}]]"
 
 
 
