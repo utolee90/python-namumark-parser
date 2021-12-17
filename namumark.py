@@ -39,6 +39,7 @@ class NamuMark:
             r'(^|\n)==#?\s?(.*)\s?#?==',
             r'(^|\n)=#?\s?(.*)\s?#?='
         ]
+
         self.h_tag_hide = [
             r'(^|\n)======#\s?(.*)\s?#======',
             r'(^|\n)=====#\s?(.*)\s?#=====',
@@ -47,6 +48,7 @@ class NamuMark:
             r'(^|\n)==#\s?(.*)\s?#==',
             r'(^|\n)=#\s?(.*)\s?#='
         ]
+
         self.multi_bracket = {
             "{{{": {
                 "open": "{{{",
@@ -59,6 +61,7 @@ class NamuMark:
                 "processor": "macro_processor"
             }
         }
+
         self.single_bracket = {
             "=": {
               "open": "=",
@@ -110,12 +113,12 @@ class NamuMark:
         # 문법 사용할 때 만드는 특정문자
         self.IDENTIFIER = ['[', '{', '#', '>', '~', '-', '*', '(', '=']
 
-        # 사용중인 매크로
+        # 사용중인 매크로 (list, table, bq 표현)
         self.macros= []
         #  사용중인 매크로 텍스트
         self.macro_texts = []
-        # 사용중인 인라인 매크로
-        self.inline_macros = []
+        # 사용중인 랜더링 매크로 (render_processor에서 사용. html, wiki, math, syntax, inclusion, pre 등)
+        self.render_macros = []
 
         # 위키 페이지 - TITLE / TEXT
         self.WIKI_PAGE = wiki_text
@@ -125,6 +128,9 @@ class NamuMark:
         self.WIKI_PAGE_LINES = self.WIKI_TEXT.split('\n')
         self.image_as_link = False
         self.wap_render = False
+
+        self.subtitles = self.title_structure(self.WIKI_TEXT,"")['titles']
+        self.parts = self.title_structure(self.WIKI_TEXT,"")['parts']
 
         # 목록으로
         self.TOC = self.get_toc()
@@ -145,8 +151,6 @@ class NamuMark:
 
         self.MIN_TITLE_INDEX = min(list(filter(lambda x: bool(re.search(self.h_tag[6-x], self.WIKI_TEXT)), range(1,7))))
 
-        self.subtitles = self.title_structure(self.WIKI_TEXT,"")['titles']
-        self.parts = self.title_structure(self.WIKI_TEXT,"")['parts']
 
     # parser for mediawiki -
     @staticmethod
@@ -202,34 +206,43 @@ class NamuMark:
     def parse_mw(self):
         if not self.WIKI_PAGE.title:
             return ""
-        self.parsed = self.pre_parser(self.WIKI_PAGE['text'])
-        self.parsed = self.to_mw(self.parsed)
+        # self.parsed = self.pre_parser(self.WIKI_PAGE['text'])
+        self.parsed = self.mw_scan(self.WIKI_PAGE['text'])
         return self.parsed
 
     # HTML 바꾸기
-    def to_mw(self, text:str):
-        res = ""
+    # def to_mw(self, text:str):
+    #     res = ""
+    #
+    #     # 넘겨주기 형식 - 빈문서로 처리
+    #     if re.fullmatch(r"#(?:redirect|넘겨주기) (.+)", text, flags=re.I):
+    #         return ""
+    #
+    #     # 정의중입니다.
 
-        # 넘겨주기 형식 - 빈문서로 처리
-        if re.fullmatch(r"#(?:redirect|넘겨주기) (.+)", text, flags=re.I):
-            return ""
 
-        # 정의중입니다.
-
-
-    # 미디어위키 스캔
+    # 미디어위키 메인함수
+    '''미디어위키 메인함수 - 텍스트 - 파싱하는 함수
+    파싱 전략
+    1. 나무마크로된 텍스트를 각 줄로 나누기
+    2. 각 줄에 위키 패턴에 따라 매크로 지정. 윗줄과 패턴이 동일하면 패턴 텍스트에 삽입.
+    2.1. 패턴 종류 : none(아무것도 없음), pre(문법없음), list(목록), math(수식), syntax(문법강조), html(생 HTML), bq(블록), table(테이블)
+    2.2. 패턴은 중복해서 서술할 수 있음.
+    3. 각 줄의 입력을 보고 패턴 파악하기
+    3.1. 패턴이 동일할 경우 pattern_result 변수에 내용 추가
+    3.2. 다음 줄의 패턴이 달라질 경우 patter_result 결과를 정의한 후 pattern에 따른 프로세서를 이용해서 파싱된 내용 추가
+    '''
     def mw_scan(self, text: str):
         # 결과
         result = ""
-        # 파서 적용할 결과
+        # 파서 하나 적용할 결과
         parser_result = ""
         # 텍스트를 줄 단위로 나누기
         strlines = text.split('\n')
         # 파서
         macros = ['none']
+        self.macros = macros
         parsed_texts = []
-        # 한 줄 파서 목록
-        inline_macros = []
 
         #넘겨주기 형식 - 빠르게 처리
         if re.fullmatch(r"#(?:redirect|넘겨주기) (.+)", text, flags=re.I):
@@ -242,11 +255,36 @@ class NamuMark:
         idx = 0
         while idx < len(strlines):
             cur_line = strlines[idx]
-            # 매크로가 동일할 때
-            if macros[-1] == self.get_pattern(cur_line):
-                parser_result += cur_line+'\n'
+            if self.get_pattern(cur_line) == "hr":
+                result += "<hr />\n"
+            elif self.get_pattern(cur_line) == "comment":
+                cont = re.match("^##(.*)", cur_line).group(1)
+                result += f"<!--{cont}-->\n"
 
+            # 매크로가 동일할 때 - list, bq, table, none
+            elif macros[-1] == self.get_pattern(cur_line):
+                parser_result += cur_line
 
+            # 매크로가 달라질 때
+            else:
+                if macros[-1] == 'list':
+                    # 리스트 파서 추가
+                    result += self.list_parser(parser_result)
+                elif macros[-1] == 'bq':
+                    # 블록 파서 결과 추가
+                    result += self.bq_parser(parser_result)
+                elif macros[-1] == 'table':
+                    #표 파서 결과 추가
+                    result += self.table_parser(parser_result)
+                else:
+                    # 파서 결과 추가
+                    result += self.render_processor(parser_result, 'multi')
+
+                parser_result = ""
+                macros[-1] = self.get_pattern(cur_line)
+                self.macros = macros
+
+            idx +=1
 
     # 패턴 분석 함수 - 텍스트 통해서 패턴 분석
     def get_pattern(self, text:str):
@@ -262,6 +300,12 @@ class NamuMark:
         # 주석
         elif re.match(r"^##", text):
             return 'comment'
+        # 가로선
+        elif text[0:4] == "----":
+            return 'hr'
+        # 아무것도 없을 때
+        else:
+            return 'none'
 
 
     # 헤딩 구조로 문서 나누어 분석하기. structure
@@ -365,137 +409,266 @@ class NamuMark:
     # 중괄호 여러줄 프로세싱. 기본적으로 문법 기호 포함.
     # 멀티라인일 때는 type = multi
     def render_processor(self, text: str, type: str=""):
+        r = 0
         res = ""
+
+        parsing_symbol_multiline = ['{', '[', '\n']
         render_stack = [] # render_processor 안에 여러 기호가 있을 때
         # 여러 줄 표시. 즉 줄이 닫히지 않았을 때
         if type == "multi":
-            # html - 내부 내용 그대로 출력
-            if text[0:10].lower() == "{{{#!html ":
-                self.macros.append('html')
-                return text[10:]
+            # 임시로 파싱하기 전 코드 저장
+            temp_preparsed = ""
 
-            # wiki -> div tag로 감싸서 처리. 단 display:inline이 있을 때는 span 태그로 처리
-            elif text[0:10].lower() == "{{{#!wiki ":
-                # 첫줄 부분만 남겨서
-                text_head = text.split('\n')[0][10:]
-                is_inline = "display:inline" in text_head
-                text_head_len = len(text_head)+1
-                text_remain = text[text_head_len:-3]
-                if is_inline:
-                    return f"<span {text_head}>{self.mw_scan(self.pre_parser(text_remain))}</span>"
-                else:
-                    return f"<div {text_head}>\n{self.mw_scan(self.pre_parser(text_remain))}\n</div>"
-
-            # 전용 태그: span/inline -> span tag로 감싸서 처리.
-            elif text[0:10].lower() == "{{{#!span " or text[0:12].lower() == "{{{#!inline":
-                # 첫줄 부분만 남겨서
-                text_head = text.split('\n')[0][10:]
-                text_head_len = len(text_head) + 1
-                text_remain = text[text_head_len:-3]
-                return f"<span {text_head}>{self.mw_scan(self.pre_parser(text_remain))}</span>"
-
-
-            # folding -> 숨김 시작 틀 사용
-            elif text[0:13].lower() == "{{{#!folding ":
-                # 첫줄 부분 분리
-                text_head = text.split('\n')[0][10:]
-                text_head_len = len(text_head)+1
-                text_remain = text[text_head_len:-3]
-                return f"{{{{숨김 시작|title={self.inner_template(text_head)}}}}}\n{self.mw_scan(self.pre_parser(text_remain))}\n{{{{숨김 끝}}}}"
-
-            #syntax/source -> syntaxhighlight
-            elif text[0:12].lower() in ["{{{#!syntax ", "{{{#!source "]:
-                text_head = text.split('\n')[0][10:]
-                text_head_len = len(text_head)+1
-                text_remain = text[text_head_len:-3]
-                return f"<syntaxhighlight lang={text_head}>\n{text_remain}\n</syntaxhighlight>"
-
-            # poem -> poem,
-            elif text[0:10].lower() == "{{{#!poem ":
-                # 첫줄 부분 분리
-                text_head = text.split('\n')[0][10:]
-                text_head_len = len(text_head)+1
-                text_remain = text[text_head_len:-3]
-                return f"<poem style={text_head}>\n{self.mw_scan(self.pre_parser(text_remain))}\n</poem>"
-
-            # math -> math
-            elif text[0:10].lower() == "{{{#!math ":
-                # math 태그는 첫줄부터 사용
-                text_remain = text[10:-3]
-                return f"<math>{text_remain}</math>"
-
-            # code -> code
-            elif text[0:10].lower() == "{{{#!code ":
-                # code 태그는 첫줄부터 사용
-                text_remain = text[10:-3]
-                return f"<code>{self.mw_scan(self.pre_parser(text_remain))}</code>"
-
-            #나머지 #!패턴-> 중괄호 뒷부분 모두 pre태그로 처리
-            elif text[0:5] == "{{{#!":
-                text_remain = text[4:-3]
-                self.macros.append('pre')
-                return f"<pre>{text_remain}</pre>"
-
-            # #color 패턴 -> 색상처리
-            elif re.match(r"\{\{\{(#[0-9A-Za-z]+ )", text):
-                text_head = re.match('\{\{\{(#[0-9A-Za-z]+) ', text).group(0)
-                text_remain = text[len(text_head):]
-                color = re.match('\{\{\{(#[0-9A-Za-z]+)', text).group(1)
-                if not re.match(r'#[0-9A-Fa-f]{3} ',color) and not re.match(r'#[0-9A-Fa-f]{6} ',color):
-                    # 색상명 있으면 색상코드로 변경해서 처리. 커스텀 색상 추가용
-                    if color[1:] in WEB_COLOR_LIST.keys():
-                        color = '#'+WEB_COLOR_LIST[color[1:]]
-                    # 나머지
-                    else:
-                        return f"<div>{text_head[4:]}{self.mw_scan(self.pre_parser(text_remain))}"
-
-                return f"<div style='{color}'>{self.mw_scan(self.pre_parser(text_remain))}</div>"
-
-            # #color,#color 패턴 -> 라이트/다크모드.
-            # 리브레 위키에서는 mw.loader.load('//librewiki.net/index.php?title=사용자:Utolee90/liberty.js&action=raw&ctype=text/javascript') 삽입시에만 유효
-            elif re.match(r"\{\{\{(#[0-9A-Za-z]+,#[0-9A-Za-z] )", text):
-                colors = re.match('\{\{\{(#[0-9A-Za-z]+),(#[0-9A-Za-z]+) ', text)
-                text_head = colors.group(0)
-                text_remain = text[len(text_head):]
-                color1, color2 = colors.group(1), colors.group(2)
-
-        else: # 멀티라인이 아닐 때 파싱
-            r = 0
-            res = ""
-            parsing_symbol = ['{', "[", '~', '-', '_', '^', ',']
-            # 낱말별로 검사
+            # 낱자마다 찾기
             while r < len(text):
+                # 낱자별로 검색
                 letter = text[r]
-                if letter in parsing_symbol:
+
+                if letter in parsing_symbol_multiline:
+
+                    # html - 내부 내용 그대로 출력
+                    if text[r:r+10].lower() == "{{{#!html ":
+                        # 우선 앞에서 저장된 temp_preparsed 내용은 파싱한다.
+                        res += self.render_processor(temp_preparsed) if temp_preparsed != "" else ""
+                        text_remain = text[r+10:]
+                        closed_position = text_remain.find("}}}")
+                        parsed = text_remain[:closed_position] if closed_position>=0 else text_remain
+                        r += 13 + len(parsed) if parsed_find("}}}")>=0 else 10+len(parsed)
+                        res += parsed
+                        temp_preparsed = ""
+
+                    # wiki -> div tag로 감싸서 처리. 단 display:inline이 있을 때는 span 태그로 처리
+                    elif text[r:r+10].lower() == "{{{#!wiki ":
+                        # 우선 앞에서 저장된 temp_preparsed 내용은 파싱한다.
+                        res += self.render_processor(temp_preparsed) if temp_preparsed != "" else ""
+                        # 첫줄 부분만 남겨서
+                        text_head = text[r:].split('\n')[0][10:]
+                        is_inline = "display:inline" in text_head
+                        text_head_len = len(text_head)+1
+                        text_remain = text[r+text_head_len:]
+
+                        open_count = text_remain.count("{{{")
+                        tmppos = 0
+                        tmpcnt = 0
+                        while tmpcnt <= open_count and tmppos >= 0:
+                            tmppos = text_remain.find("}}}", tmppos + 1)
+                            tmpcnt += 1
+                        if tmppos >= 0:
+                            text_remain = text_remain[:tmppos]
+
+                        if is_inline:
+                            res += f"<span {text_head}>{self.mw_scan(self.pre_parser(text_remain))}</span>"
+                        else:
+                            res += f"<div {text_head}>\n{self.mw_scan(self.pre_parser(text_remain))}\n</div>"
+                        temp_preparsed = ""
+
+                    # folding -> 숨김 시작 틀 사용
+                    elif text[0:13].lower() == "{{{#!folding ":
+                        # 우선 앞에서 저장된 temp_preparsed 내용은 파싱한다.
+                        res += self.render_processor(temp_preparsed) if temp_preparsed != "" else ""
+                        # 첫줄 부분 분리
+                        text_head = text.split('\n')[0][10:]
+                        text_head_len = len(text_head)+1
+                        text_remain = text[text_head_len:]
+
+                        open_count = text_remain.count("{{{")
+                        tmppos = 0
+                        tmpcnt = 0
+                        while tmpcnt <= open_count and tmppos >= 0:
+                            tmppos = text_remain.find("}}}", tmppos + 1)
+                            tmpcnt += 1
+                        if tmppos >= 0:
+                            text_remain = text_remain[:tmppos]
+
+                        r += 16+ len(text_remain) if tmppos >=0 else 13+len(text_remain)
+
+                        res += f"{{{{숨김 시작|title={self.inner_template(text_head)}}}}}\n{self.mw_scan(self.pre_parser(text_remain))}\n{{{{숨김 끝}}}}"
+                        temp_preparsed = ""
+
+                    #syntax/source -> syntaxhighlight
+                    elif text[0:12].lower() in ["{{{#!syntax ", "{{{#!source "]:
+                        # 우선 앞에서 저장된 temp_preparsed 내용은 파싱한다.
+                        res += self.render_processor(temp_preparsed) if temp_preparsed != "" else ""
+                        parsed = re.match(r"\{\{\{#!(syntax|source) (.*?)}}}", text[r:]).group(1)
+                        r += 15 + len(parsed)
+                        text_head = parsed.split('\n')[0]
+                        text_head_len = len(text_head)+1
+                        text_remain = text[text_head_len:]
+                        res += f"<syntaxhighlight lang=\"{text_head}\">\n{text_remain}\n</syntaxhighlight>"
+                        temp_preparsed = ""
+
                     # 색깔 표현
-                    if letter == "{" and re.match(r"\{\{\{#(.*?) (.*?)}}}", text[r:]):
-                        color = re.match(r"\{\{\{#(.*?) (.*?)}}}", text[r:]).group(1)
-                        parsed = re.match(r"\{\{\{#(.*?) (.*?)}}}", text[r:]).group(2)
-                        r += 8 + len(color) + len(parsed)  # r값 늘리기
+                    elif letter == "{" and re.match(r"^\{\{\{#(.*?) (.*?)", text[r:]):
+                        # 우선 앞에서 저장된 temp_preparsed 내용은 파싱한다.
+                        res += self.render_processor(temp_preparsed) if temp_preparsed != "" else ""
+                        color = re.match(r"\{\{\{#(.*?) (.*)", text[r:]).group(1)
+                        pre_parsed = re.match(r"\{\{\{#(.*?) (.*)", text[r:], re.MULTILINE).group(2)
+                        # pre_parsed에서 {{{ 기호와 }}} 기호 갯수를 센다.
+                        pre_parsed_open_count = pre_parsed.count("{{{")
+                        tmppos = 0
+                        tmpcnt = 0
+
+                        # pre_parsed_open_count+1번째 "}}}" 찾기
+                        while tmpcnt <= pre_parsed_open_count and tmppos >= 0:
+                            tmppos = pre_parsed.find("}}}", tmppos + 1)
+                            tmpcnt += 1
+                        if tmppos >= 0:
+                            parsed = pre_parsed[:tmppos]
+                        else:
+                            parsed = pre_parsed
+
+                        r += 8 + len(color) + len(parsed) if tmppos >= 0 else 5 + len(color) + len(parsed)  # r값 늘리기
                         if re.match(r"[0-9A-Fa-f]{6}", color):
-                            res += f"{{{{색|#{color}|{self.render_processor(parsed)}}}}}"
+                            res += f"{{{{색|#{color}|{self.render_processor(self.pre_parser(parsed))}}}}}"
                         elif re.match(r"[0-9A-Fa-f]{3}", color):
-                            res += f"{{{{색|#{color}|{self.render_processor(parsed)}}}}}"
+                            res += f"{{{{색|#{color}|{self.render_processor(self.pre_parser(parsed))}}}}}"
                         elif color in WEB_COLOR_LIST.keys():
-                            res += f"{{{{색|#{WEB_COLOR_LIST[color]}|{self.render_processor(parsed)}}}}}"
-                        else:  # 일단은 <nowiki>로 처리
-                            res += f"<nowiki>#{color} {parsed}</nowiki>"
+                            res += f"{{{{색|#{WEB_COLOR_LIST[color]}|{self.render_processor(self.pre_parser(parsed))}}}}}"
+                        else:  # 일단은 <pre>로 처리
+                            res += f"<pre>#{color} {parsed}</pre>"
+                        temp_preparsed = ""
+
                     # 글씨 키우기/줄이기
-                    elif letter == "{" and re.match(r"\{\{\{(+|-)([1-5]) (.*?)}}}", text[r:]):
-                        sizer = re.match(r"\{\{\{(+|-)([1-5]) (.*?)}}}", text[r:]).group(1)
-                        num = int(re.match(r"\{\{\{(+|-)([1-5]) (.*?)}}}", text[r:]).group(2))
-                        parsed = re.match(r"\{\{\{(+|-)([1-5]) (.*?)}}}", text[r:]).group(3)
-                        r += 9 + len(parsed)
-                        base = self.render_processor(parsed)
+                    elif letter == "{" and re.match(r"\{\{\{(+|-)([1-5]) (.*)", text[r:]):
+                        # 우선 앞에서 저장된 temp_preparsed 내용은 파싱한다.
+                        res += self.render_processor(temp_preparsed) if temp_preparsed != "" else ""
+                        sizer = re.match(r"\{\{\{(+|-)([1-5]) (.*)", text[r:]).group(1)
+                        num = int(re.match(r"\{\{\{(+|-)([1-5]) (.*)", text[r:]).group(2))
+                        pre_parsed = re.match(r"\{\{\{(+|-)([1-5]) (.*)", text[r:], re.MULTILINE).group(3)
+                        # pre_parsed에서 {{{ 기호와 }}} 기호 갯수를 센다.
+                        pre_parsed_open_count = pre_parsed.count("{{{")
+                        tmppos = 0
+                        tmpcnt = 0
+
+                        while tmpcnt <= pre_parsed_open_count and tmppos >= 0:
+                            tmppos = pre_parsed.find("}}}", tmppos + 1)
+                            tmpcnt += 1
+                        if tmppos >= 0:
+                            parsed = pre_parsed[:tmppos]
+                        else:
+                            parsed = pre_parsed
+
+                        r += 9 + len(parsed) if temppos >= 0 else 6 + len(parsed)
+                        base = self.render_processor(self.pre_parser(parsed))
                         for _ in range(num):
                             base = "<big>" + base + "</big>" if sizer == "+" else "<small>" + base + "</small>"
                         res += base
+                        temp_preparsed = ""
+
+                    # # #color,#color 패턴 -> 라이트/다크모드.
+                    # # 리브레 위키에서는 mw.loader.load('//librewiki.net/index.php?title=사용자:Utolee90/liberty.js&action=raw&ctype=text/javascript') 삽입시에만 유효
+                    # elif re.match(r"\{\{\{(#[0-9A-Za-z]+,#[0-9A-Za-z] )", text):
+                    #     colors = re.match('\{\{\{(#[0-9A-Za-z]+),(#[0-9A-Za-z]+) ', text)
+                    #     text_head = colors.group(0)
+                    #     text_remain = text[len(text_head):]
+                    #     color1, color2 = colors.group(1), colors.group(2)
+
+                    # 나머지 - pre로 처리하기
+                    elif text[0:3] == "{{{":
+                        # 우선 앞에서 저장된 temp_preparsed 내용은 파싱한다.
+                        res += self.render_processor(temp_preparsed) if temp_preparsed != "" else ""
+                        text_remain = text[r + 3:]
+                        closed_position = text_remain.find("}}}")
+                        parsed = text_remain[:closed_position] if closed_position >= 0 else text_remain
+                        r += 6 + len(parsed) if parsed_find("}}}") >= 0 else 3 + len(parsed)
+                        res += "<pre>"+parsed+"</pre>"
+                        temp_preparsed = ""
+
+                    # 나중에 처리...
+                    elif text[0:6] == "[math(":
+                        # 우선 앞에서 저장된 temp_preparsed 내용은 파싱한다.
+                        res += self.render_processor(temp_preparsed) if temp_preparsed != "" else ""
+
+                    # 개행기호 - 앞부분의 내용을 전부 파싱...
+                    elif letter == "\n":
+                        # 우선 앞에서 저장된 temp_preparsed 내용은 파싱한다.
+                        res += self.render_processor(temp_preparsed) if temp_preparsed != "" else ""
+                        if re.match(r"^\n{2,}", text[r:], re.MULTILINE):
+                            crlines = re.match(r"^\n{2,}", text[r:], re.MULTILINE).group(0)
+                            res +=crlines # 2행 이상 개행시에는 똑같이 개행
+                            r += len(crlines)
+                            temp_preparsed = ""
+                        elif text[r+1] != "\n": #한줄 개행이면 <br/>기호 삽입.
+                            res +="<br />"
+                            r += 1
+                            temp_preparsed = ""
+                    # 나머지 케이스
+                    else:
+                        temp_preparsed +=letter
+                        r +=1
+                # 나머지 케이스
+                else:
+                    temp_preparsed += letter
+                    r += 1
+
+            return res
+
+        else: # 멀티라인이 아닐 때 파싱
+
+            # 낱말별로 검사
+            while r < len(text):
+                letter = text[r]
+                parsing_symbol = ['{', "[", '~', '-', '_', '^', ',', "<"]
+
+                if letter in parsing_symbol:
 
                     # 문법 무시
-                    elif letter == "{" and re.match(r"\{\{\{(.*?)}}}", text[r:]):
-                        parsed = re.match(r"\{\{\{(.*?)}}}", text[r:]).group(1)
-                        r += 6 + len(parsed)
-                        res += f"<nowiki>{parsed}</nowiki>"
+                    if letter == "{" and re.match(r"^\{\{\{([^#].*?)}}}", text[r:]):
+                    parsed = re.match(r"\{\{\{([^#].*?)}}}", text[r:]).group(1)
+                    r += 6 + len(parsed)
+                    res += f"<nowiki>{parsed}</nowiki>"
+
+                    # 색깔 표현
+                    elif letter == "{" and re.match(r"^\{\{\{#(.*?) (.*?)", text[r:]):
+                        color = re.match(r"\{\{\{#(.*?) (.*)", text[r:]).group(1)
+                        pre_parsed = re.match(r"\{\{\{#(.*?) (.*)", text[r:]).group(2)
+                        # pre_parsed에서 {{{ 기호와 }}} 기호 갯수를 센다.
+                        pre_parsed_open_count = pre_parsed.count("{{{")
+                        tmppos = 0
+                        tmpcnt = 0
+
+                        # pre_parsed_open_count+1번째 "}}}" 찾기
+                        while tmpcnt <= pre_parsed_open_count and tmppos >= 0:
+                            tmppos = pre_parsed.find("}}}", tmppos + 1)
+                            tmpcnt += 1
+                        if tmppos >= 0:
+                            parsed = pre_parsed[:tmppos]
+                        else:
+                            parsed = pre_parsed
+
+                        r += 8 + len(color) + len(parsed) if tmppos >=0 else 5+len(color)+len(parsed)  # r값 늘리기
+                        if re.match(r"[0-9A-Fa-f]{6}", color):
+                            res += f"{{{{색|#{color}|{self.render_processor(self.pre_parser(parsed))}}}}}"
+                        elif re.match(r"[0-9A-Fa-f]{3}", color):
+                            res += f"{{{{색|#{color}|{self.render_processor(self.pre_parser(parsed))}}}}}"
+                        elif color in WEB_COLOR_LIST.keys():
+                            res += f"{{{{색|#{WEB_COLOR_LIST[color]}|{self.render_processor(self.pre_parser(parsed))}}}}}"
+                        else:  # 일단은 <nowiki>로 처리
+                            res += f"<nowiki>#{color} {parsed}</nowiki>"
+
+                    # 글씨 키우기/줄이기
+                    elif letter == "{" and re.match(r"\{\{\{(+|-)([1-5]) (.*)", text[r:]):
+                        sizer = re.match(r"\{\{\{(+|-)([1-5]) (.*)", text[r:]).group(1)
+                        num = int(re.match(r"\{\{\{(+|-)([1-5]) (.*)", text[r:]).group(2))
+                        pre_parsed = re.match(r"\{\{\{(+|-)([1-5]) (.*)", text[r:]).group(3)
+                        # pre_parsed에서 {{{ 기호와 }}} 기호 갯수를 센다.
+                        pre_parsed_open_count = pre_parsed.count("{{{")
+                        tmppos = 0
+                        tmpcnt = 0
+
+                        while tmpcnt <= pre_parsed_open_count and tmppos >= 0:
+                            tmppos = pre_parsed.find("}}}", tmppos + 1)
+                            tmpcnt += 1
+                        if tmppos >= 0:
+                            parsed = pre_parsed[:tmppos]
+                        else:
+                            parsed = pre_parsed
+
+                        r += 9 + len(parsed) if temppos>=0 else 6+len(parsed)
+                        base = self.render_processor(self.pre_parser(parsed))
+                        for _ in range(num):
+                            base = "<big>" + base + "</big>" if sizer == "+" else "<small>" + base + "</small>"
+                        res += base
 
                     # 각주. 각주 내 각주 기호가 있을 경우 오류가 생길 수 있으므로 나중에 별도의 함수를 이용해서 해결할 예정.
                     elif letter == "[" and re.match(r"\[\*(.*?) (.*?)]", text[r:]):
@@ -503,9 +676,10 @@ class NamuMark:
                         refcont = re.match(r"\[\*(.*?) (.*?)]", text[r:]).group(2)
                         r += 4 + len(refname) + len(refcont)
                         if refname == "":
-                            res += f"<ref>{self.render_processor(refcont)}</ref>"
+                            res += f"<ref>{self.render_processor(self.pre_parser(refcont))}</ref>"
                         else:
-                            res + + f"<ref name=\"{refname}\">{self.render_processor(refcont)}</ref>"
+                            res + + f"<ref name=\"{refname}\">{self.render_processor(self.pre_parser(refcont))}</ref>"
+
                     # 링크 처리 - 외부링크, 내부링크 공통처리
                     elif letter == "[" and re.match(r"\[\[(.*?)]]", text[r:]):
                         article = re.match(r"\[\[(.*?)(\|.*?)?]]", text[r:]).group(1)
@@ -523,31 +697,37 @@ class NamuMark:
                     elif letter == "~" and re.match(r"~~(.*?)~~", text[r:]):
                         cont = re.match(r"~~(.*?)~~", text[r:]).group(1)
                         r += 4 + len(cont)
-                        res += f"<del>{self.render_processor(cont)}</del>"
+                        res += f"<del>{self.render_processor(self.pre_parser(cont))}</del>"
 
                     # 취소선2
                     elif letter == "-" and re.match(r"--(.*?)--", text[r:]):
                         cont = re.match(r"--(.*?)--", text[r:]).group(1)
                         r += 4 + len(cont)
-                        res += f"<del>{self.render_processor(cont)}</del>"
+                        res += f"<del>{self.render_processor(self.pre_parser(cont))}</del>"
 
                     # 밑줄
                     elif letter == "_" and re.match(r"__(.*?)__", text[r:]):
                         cont = re.match(r"__(.*?)__", text[r:]).group(1)
                         r += 4 + len(cont)
-                        res += f"<u>{self.render_processor(cont)}</u>"
+                        res += f"<u>{self.render_processor(self.pre_parser(cont))}</u>"
 
                     # 위 첨자
                     elif letter == "^" and re.match(r"\^\^(.*?)\^\^", text[r:]):
                         cont = re.match(r"\^\^(.*?)\^\^", text[r:]).group(1)
                         r += 4 + len(cont)
-                        res += f"<sup>{self.render_processor(cont)}</sup>"
+                        res += f"<sup>{self.render_processor(self.pre_parser(cont))}</sup>"
 
                     # 아래첨자
                     elif letter == "," and re.match(r",,(.*?),,", text[r:]):
                         cont = re.match(r",,(.*?)^^", text[r:]).group(1)
                         r += 4 + len(cont)
-                        res += f"<sub>{self.render_processor(cont)}</sub>"
+                        res += f"<sub>{self.render_processor(self.pre_parser(cont))}</sub>"
+
+                    # 수식 <math> 태그 - 동일하게 해석
+                    elif letter == "<" and re.match(r"^<math>(.*?)</math>", text[r:]):
+                        cont = re.match(r"^<math>(.*?)</math>", text[r:]).group(0)
+                        r += len(cont)
+                        res += cont
 
                     # 나머지
                     else:
@@ -559,8 +739,6 @@ class NamuMark:
                     r += 1
 
             return res
-
-
 
 
     # 리스트 파싱
@@ -610,7 +788,6 @@ class NamuMark:
                 elif lvl > tbl['level']:
                     # 우선 기호부터 확인해보자
                     tgn_total_level = tgn_total[tbl['level']-1] # 해당 단계에서 심볼부터 확인
-
 
                     #레벨 기준으로 확인
                     if (tgn_total_level == "*" and tbl['type'] == 'ul') or (tgn_total_level == "#" and tbl['type'] == 'ol class="decimal"'):
@@ -666,8 +843,6 @@ class NamuMark:
 
         return res
 
-
-
     # 리스트 한줄 파싱,
     # 결과 : {type: (유형), preparsed: (li 태그 안에 파싱된 텍스트), level: (레벨)}
     def list_line_parser(self, text: str):
@@ -686,7 +861,7 @@ class NamuMark:
                     break
         return res
     
-    # [매크로] 형식의 함수 처리하기
+    # 한 줄짜리 [매크로] 형식의 함수 처리하기
     @staticmethod
     def simple_macro_processor(text:str):
         
@@ -698,7 +873,9 @@ class NamuMark:
                   "tableofcontents": "__TOC__",
                                      "각주": "{{각주}}",
             "footnote": "{{각주}}",
-            "clearfix": "{{-}}"
+            "clearfix": "{{-}}",
+            "pagecount": "{{NUMBEROFPAGES}}",
+            "pagecount(문서)": "{{NUMBEROFARTICLES}}",
         }
         # 단순 텍스트일 때
         if text in const_macro_list.keys():
@@ -729,10 +906,39 @@ class NamuMark:
             aname = re.match(r"anchor\((.*)\)", text).group(1)
             return f"<span id='{aname}></span>"
 
+        # 루비 문자 매크로
+        elif re.match(r"ruby\((.*)\)", text):
+            cont = re.match(r"ruby\((.*?)(,ruby=.*?)?(,color=.*?)?\)").group(1)
+            ruby_part = re.match(r"ruby\((.*?)(,ruby=.*?)?(,color=.*?)?\)").group(2)
+            color_part = re.match(r"ruby\((.*?)(,ruby=.*?)?(,color=.*?)?\)").group(3)
+            if ruby_part != "":
+                ruby = ruby_part[6:]
+                if color_part != "":
+                    color = color_part[7:]
+                    return f"<ruby><rb>{cont}</rb><rp>(</rp><rt style=\"color:{color}\">{ruby}</rt><rp>)</rp>"
+                else:
+                    return f"<ruby><rb>{cont}</rb><rp>(</rp><rt>{ruby}</rt><rp>)</rp>"
+
+        # 틀 포함 문구
+        elif re.match(r"include\((.*)\)", text):
+            conts = re.match(r"include\((.*)\)", text).group(1)
+            conts_list = conts.split(',') # 안의 내용 - 틀:틀이름,변수1=값1,변수2=값2,
+            transcluding = conts_list[0].strip() # 문서 목록
+            res = f"{{{{{transcluding}"
+            # 내부에 변수 없을 때
+            if len(conts_list) == 1:
+                return res + "}}"
+            # 내부에 변수가 있을 때
+            else:
+                for vars in conts_list[1:]:
+                    res += "|"+vars
+                return res + "}}"
+
+
         else: return ""
 
-    # link processor
-    def link_processor(self, text):
+    # 한 줄짜리 링크형태 문법 처리
+    def link_processor(self, link, text):
         # 외부 링크
         if re.match(r"https?://(.*)", link):
             return f"{link}" if text == "" else f"[{link} {self.render_processor(text, '')}]"
