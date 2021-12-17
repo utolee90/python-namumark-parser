@@ -571,8 +571,14 @@ class NamuMark:
         else: return ""
     
     # <nowiki> 태그 삽입
-    def convert_to_escape_markup(self, text:str):
-        while re.search(r"\\", text) and re.search(r"\\", text).start() != -1:
-            matchpoint = re.search(r"\\", text).start()
-            text = text[0:matchpoint] + "<nowiki>" + text[matchpoint+1] + "</nowiki>" + text[matchpoint+2:]
+    def convert_to_escape_markup(text:str):
+        if not re.search(r"([\[\{#~\-\|=\(]*)\\([\[\{#~\-\|=\(]+)", text):
+            print("No matching string")
+            return text
+        while re.search(r"\\([\[\{#~\-\|=\(]+)", text) and re.search(r"\\([\[\{#~\-\|=\(]+)", text).start() != -1:
+            postmatchpoint = re.search(r"\\([\[\{#~\-\|=\(]+)", text).start()
+            prematchend = re.search(r"([\[\{#~\-\|=\(]*)\\", text).end()
+            matchpoint = re.search(r"([\[\{#~\-\|=\(]*)\\([\[\{#~\-\|=\(]+)", text).start()
+            matchend = re.search(r"([\[\{#~\-\|=\(]*)\\([\[\{#~\-\|=\(]+)", text).end()
+            text = text[0:matchpoint] + "<nowiki>" + text[matchpoint:postmatchpoint] + text[prematchend:matchend] + "</nowiki>" + text[matchend:]
         return text
