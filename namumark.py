@@ -489,7 +489,7 @@ class NamuMark:
                     elif text[0:12].lower() in ["{{{#!syntax ", "{{{#!source "]:
                         # 우선 앞에서 저장된 temp_preparsed 내용은 파싱한다.
                         res += self.render_processor(temp_preparsed) if temp_preparsed != "" else ""
-                        parsed = re.match(r"\{\{\{#!(syntax|source) (.*?)}}}", text[r:]).group(1)
+                        parsed = re.match(r"\{\{\{#!(syntax|source) (.*?)}}}", text[r:], re.MULTILINE).group(1)
                         r += 15 + len(parsed)
                         text_head = parsed.split('\n')[0]
                         text_head_len = len(text_head)+1
@@ -498,10 +498,10 @@ class NamuMark:
                         temp_preparsed = ""
 
                     # 색깔 표현
-                    elif letter == "{" and re.match(r"^\{\{\{#(.*?) (.*?)", text[r:]):
+                    elif letter == "{" and re.match(r"^\{\{\{#(.*?) (.*?)", text[r:], re.MULTILINE):
                         # 우선 앞에서 저장된 temp_preparsed 내용은 파싱한다.
                         res += self.render_processor(temp_preparsed) if temp_preparsed != "" else ""
-                        color = re.match(r"\{\{\{#(.*?) (.*)", text[r:]).group(1)
+                        color = re.match(r"\{\{\{#(.*?) (.*)", text[r:], re.MULTILINE).group(1)
                         pre_parsed = re.match(r"\{\{\{#(.*?) (.*)", text[r:], re.MULTILINE).group(2)
                         # pre_parsed에서 {{{ 기호와 }}} 기호 갯수를 센다.
                         pre_parsed_open_count = pre_parsed.count("{{{")
@@ -532,8 +532,8 @@ class NamuMark:
                     elif letter == "{" and re.match(r"\{\{\{(+|-)([1-5]) (.*)", text[r:]):
                         # 우선 앞에서 저장된 temp_preparsed 내용은 파싱한다.
                         res += self.render_processor(temp_preparsed) if temp_preparsed != "" else ""
-                        sizer = re.match(r"\{\{\{(+|-)([1-5]) (.*)", text[r:]).group(1)
-                        num = int(re.match(r"\{\{\{(+|-)([1-5]) (.*)", text[r:]).group(2))
+                        sizer = re.match(r"\{\{\{(+|-)([1-5]) (.*)", text[r:], re.MULTILINE).group(1)
+                        num = int(re.match(r"\{\{\{(+|-)([1-5]) (.*)", text[r:], re.MULTILINE).group(2))
                         pre_parsed = re.match(r"\{\{\{(+|-)([1-5]) (.*)", text[r:], re.MULTILINE).group(3)
                         # pre_parsed에서 {{{ 기호와 }}} 기호 갯수를 센다.
                         pre_parsed_open_count = pre_parsed.count("{{{")
