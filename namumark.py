@@ -654,10 +654,10 @@ class NamuMark:
                             res += f"<nowiki>#{color} {parsed}</nowiki>"
 
                     # 글씨 키우기/줄이기
-                    elif letter == "{" and re.match(r"\{\{\{(+|-)([1-5]) (.*)", text[r:]):
-                        sizer = re.match(r"\{\{\{(+|-)([1-5]) (.*)", text[r:]).group(1)
-                        num = int(re.match(r"\{\{\{(+|-)([1-5]) (.*)", text[r:]).group(2))
-                        pre_parsed = re.match(r"\{\{\{(+|-)([1-5]) (.*)", text[r:]).group(3)
+                    elif letter == "{" and re.match(r"\{\{\{(\+|\-)([1-5]) (.*)", text[r:]):
+                        sizer = re.match(r"\{\{\{(\+|\-)([1-5]) (.*)", text[r:]).group(1)
+                        num = int(re.match(r"\{\{\{(\+|\-)([1-5]) (.*)", text[r:]).group(2))
+                        pre_parsed = re.match(r"\{\{\{(\+|\-)([1-5]) (.*)", text[r:]).group(3)
                         # pre_parsed에서 {{{ 기호와 }}} 기호 갯수를 센다.
                         pre_parsed_open_count = pre_parsed.count("{{{")
                         tmppos = 0
