@@ -2,7 +2,7 @@ import re
 import string
 import os
 
-from template import WEB_COLOR_LIST, *
+from template import WEB_COLOR_LIST
 from processor import Processor
 
 class PlainWikiPage:
@@ -293,8 +293,11 @@ class NamuMark:
 
     # 패턴 분석 함수 - 텍스트 통해서 패턴 분석
     def get_pattern(self, text:str):
+        # 헤더
+        if re.match(r"^={1,6}.*?={1,6}", text):
+            return 'header'
         # 목록 형태
-        if re.match(r"^\s{1,6}(\*|1\.|A\.|a\.|I\.|i\.)", text):
+        elif re.match(r"^\s{1,6}(\*|1\.|A\.|a\.|I\.|i\.)", text):
             return 'list'
         # 블록 인용문
         elif re.match(r"^>", text):
@@ -437,7 +440,7 @@ class NamuMark:
                         text_remain = text[r+10:]
                         closed_position = text_remain.find("}}}")
                         parsed = text_remain[:closed_position] if closed_position>=0 else text_remain
-                        r += 13 + len(parsed) if parsed_find("}}}")>=0 else 10+len(parsed)
+                        r += 13 + len(parsed) if parsed.find("}}}")>=0 else 10+len(parsed)
                         res += parsed
                         temp_preparsed = ""
 
@@ -533,12 +536,12 @@ class NamuMark:
                         temp_preparsed = ""
 
                     # 글씨 키우기/줄이기
-                    elif letter == "{" and re.match(r"\{\{\{(+|-)([1-5]) (.*)", text[r:]):
+                    elif letter == "{" and re.match(r"\{\{\{(\+|\-)([1-5]) (.*)", text[r:]):
                         # 우선 앞에서 저장된 temp_preparsed 내용은 파싱한다.
                         res += self.render_processor(temp_preparsed) if temp_preparsed != "" else ""
-                        sizer = re.match(r"\{\{\{(+|-)([1-5]) (.*)", text[r:], re.MULTILINE).group(1)
-                        num = int(re.match(r"\{\{\{(+|-)([1-5]) (.*)", text[r:], re.MULTILINE).group(2))
-                        pre_parsed = re.match(r"\{\{\{(+|-)([1-5]) (.*)", text[r:], re.MULTILINE).group(3)
+                        sizer = re.match(r"\{\{\{(\+|\-)([1-5]) (.*)", text[r:], re.MULTILINE).group(1)
+                        num = int(re.match(r"\{\{\{(\+|\-)([1-5]) (.*)", text[r:], re.MULTILINE).group(2))
+                        pre_parsed = re.match(r"\{\{\{(\+|\-)([1-5]) (.*)", text[r:], re.MULTILINE).group(3)
                         # pre_parsed에서 {{{ 기호와 }}} 기호 갯수를 센다.
                         pre_parsed_open_count = pre_parsed.count("{{{")
                         tmppos = 0
@@ -552,7 +555,7 @@ class NamuMark:
                         else:
                             parsed = pre_parsed
 
-                        r += 9 + len(parsed) if temppos >= 0 else 6 + len(parsed)
+                        r += 9 + len(parsed) if tmppos >= 0 else 6 + len(parsed)
                         base = self.render_processor(self.pre_parser(parsed))
                         for _ in range(num):
                             base = "<big>" + base + "</big>" if sizer == "+" else "<small>" + base + "</small>"
@@ -574,7 +577,7 @@ class NamuMark:
                         text_remain = text[r + 3:]
                         closed_position = text_remain.find("}}}")
                         parsed = text_remain[:closed_position] if closed_position >= 0 else text_remain
-                        r += 6 + len(parsed) if parsed_find("}}}") >= 0 else 3 + len(parsed)
+                        r += 6 + len(parsed) if parsed.find("}}}") >= 0 else 3 + len(parsed)
                         res += "<pre>"+parsed+"</pre>"
                         temp_preparsed = ""
 
@@ -618,9 +621,9 @@ class NamuMark:
 
                     # 문법 무시
                     if letter == "{" and re.match(r"^\{\{\{([^#].*?)}}}", text[r:]):
-                    parsed = re.match(r"\{\{\{([^#].*?)}}}", text[r:]).group(1)
-                    r += 6 + len(parsed)
-                    res += f"<nowiki>{parsed}</nowiki>"
+                        parsed = re.match(r"\{\{\{([^#].*?)}}}", text[r:]).group(1)
+                        r += 6 + len(parsed)
+                        res += f"<nowiki>{parsed}</nowiki>"
 
                     # 색깔 표현
                     elif letter == "{" and re.match(r"^\{\{\{#(.*?) (.*?)", text[r:]):
@@ -668,7 +671,7 @@ class NamuMark:
                         else:
                             parsed = pre_parsed
 
-                        r += 9 + len(parsed) if temppos>=0 else 6+len(parsed)
+                        r += 9 + len(parsed) if tmppos>=0 else 6+len(parsed)
                         base = self.render_processor(self.pre_parser(parsed))
                         for _ in range(num):
                             base = "<big>" + base + "</big>" if sizer == "+" else "<small>" + base + "</small>"
@@ -902,8 +905,8 @@ class NamuMark:
         elif re.match(r"math\((.*)\)", text):
             tex = re.match(r"math\((.*)\)", text).group(1)
             return f"<math>{tex}</math>"
-            # 앵커 기호
-            elif re.match(r"anchor\((.*)\)", text):
+        # 앵커 기호
+        elif re.match(r"anchor\((.*)\)", text):
             aname = re.match(r"anchor\((.*)\)", text).group(1)
             return f"<span id='{aname}></span>"
 
