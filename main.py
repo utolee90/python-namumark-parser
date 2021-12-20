@@ -21,8 +21,8 @@ def main():
 
         mw = parser.parse_mw()
 
-        #with open('HTML.txt', 'w', encoding='utf-8') as f2:
-        #    f2.write(HTML, ensure_ascii=False)
+        with open('mw.txt', 'w', encoding='utf-8') as f2:
+           f2.write(mw, ensure_ascii=False)
 
 
 
