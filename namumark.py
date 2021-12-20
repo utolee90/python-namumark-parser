@@ -569,9 +569,9 @@ class NamuMark:
             tex = re.match(r"math\((.*)\)", text).group(1)
             return f"<math>{tex}</math>"
         else: return ""
-    
-    # 나무마크 표 파싱 및 미디어위키 표로 변환
-    # TODO: 정규표현식 최적화, 셀 꾸미기 및 이미지/동영상 삽입 개선, 캡션 달기
+    # 표 파싱 함수
+    # 인자: text -> 나무마크 문서 데이터 중 표 부분만 따온 부분 텍스트(주의: 전체 문서 텍스트를 넣지 말 것!)
+    # TODO: 정규표현식 최적화, 셀 내부 꾸미기 기능 구현
     def convert_to_mw_table(text:str):
         # [br] -> <br>로 바꾸기
         while re.search(r"\[br\]", text) and re.search(r"\[br\]", text).start() != -1:
@@ -589,6 +589,114 @@ class NamuMark:
             for substring in substrings:
                 text = text + substring + "\n\n"
             text = text + lastword
-        # 셀 병합
+        print(text)
+        print("----------")
+        # 셀 병합 및 '{| class="wikitable", '|+' |', '|-', '|}'등의 기호로 변형 : 최종 작업 단계
+        result = "{| class=\"wikitable\" "
+        rowmergingcell = 0
+        RowMergingCellNum = 0
+        Firstchar = True
+        while (re.match(r"\|", text)):
+            if (re.match(r"\|([^\|\n]+)\|", text)):
+                result += "\n|+ " + text[re.match(r"\|([^\|\n]+)\|", text).start()+1:re.match(r"\|([^\|\n]+)\|", text).end()-1]
+                text = "||" + text[re.match(r"\|([^\|\n]+)\|", text).end():]
+            elif (re.match(r"\|\|([\|]+)(\<\|[0-9]+\>)?([^\n]+)(\|\|\n)?", text)): # 여러 개의 | 문자로 가로 병합하는 경우 또는 세로 병합을 위한 더미 셀 추가
+                if RowMergingCellNum > 0: # 더미 셀이 필요함
+                    for i in range(0, RowMergingCellNum):
+                        result += "\n| style=\"display:none\" | "
+                    RowMergingCellNum = 0
+                elif re.search(r"\|\|([\|]+)\<\|[0-9]+\>([^\|]+)", text): # 가로 -> 세로 병합
+                    rowmergingcell = (re.match(r"\|\|([\|]+)",text).end() - re.match(r"\|\|([\|]+)",text).start()) // 2
+                    result += "\n| colspan=\""+ str(rowmergingcell) + "\" rowspan=\""+ text[re.search(r"\<\|[0-9]+\>", text).start()+2:re.search(r"\<\|[0-9]+\>",text).end()-1] +"\" | "
+                    result += text[re.search(r"<\|([0-9]+)\>", text).end():re.search(r"<\|([0-9]+)\>([^\|]+)", text).end()]
+                    rowmergingcell = 0
+                else: # 가로 병합
+                    rowmergingcell = (re.match(r"\|\|([\|]+)",text).end() - re.match(r"\|\|([\|]+)",text).start()) // 2
+                    result += "\n| colspan=\""+ str(rowmergingcell) + "\" | "
+                    rowmergingcell = 0
+                    result += text[re.match(r"\|\|([\|]+)", text).end():re.match(r"\|\|([\|]+)([^\|\n]+)", text).end()]
+                text = text[re.match(r"\|\|([\|]+)(\<\|[0-9]+\>)*([^\|\n]+)",text).end():]
+                if (text == ""):
+                    result += "\n|}"
+            elif re.match(r"\|\|([\|]+)\n", text): # 가로 병합 때 버려질 셀들을 처리
+                rowmergingcell = (re.match(r"\|\|([\|]+)",text).end() - re.match(r"\|\|([\|]+)",text).start()) // 2
+                for i in range(0, rowmergingcell+1):
+                    if i == 0:
+                        result += "\n| style=\"display:none\" | "
+                rowmergingcell = 0
+                result += "\n|-"
+                text = text[re.match(r"\|\|([\|])+\n", text).end():]
+                if (text == ""):
+                    result += "\n|}"
+            elif re.match(r"\|\|\<\|[0-9]+\>(\<\-[0-9]+\>|\|\|([\|]*))",text):
+                # col - row merge
+                if Firstchar:
+                    result += "\n| "
+                    Firstchar = False
+                else:
+                    result += "|| "
+                # now put in the spanning part
+                result += "rowspan=\"" + text[re.search(r"\<\|([0-9]+)\>", text).start()+2:re.search(r"\<\|([0-9]+)\>",text).end()-1] + "\" " 
+                if re.search(r"\|\|([\|]+)", text[2:]):
+                    rowmergingcell += (re.match(r"\|\|([\|]+)", text[2:]).end() - re.match(r"\|\|([\|]+)", text[2:]).start() ) // 2
+                    result += "colspan=\"" + str(rowmergingcell) + "\" | "
+                    RowMergingCellNum += rowmergingcell
+                    rowmergingcell = 0
+                else:
+                    result += "colspan=\"" + text[re.search(r"\<\-[0-9]+\>", text).start()+2:re.search(r"\<\-[0-9]+\>",text).end()-1] + "\" | "
+                # put in the context
+                result += text[re.search(r"\<\-[0-9]+\>",text).end():re.search(r"\<\-[0-9]+\>[^\|]+",text).end()] + " |" + text[re.search(r"\<\-[0-9]+\>",text).end():re.search(r"\<\-[0-9]+\>[^\|]+",text).end()] + " |"
+                text = text[re.search(r"\<\-[0-9]+\>[^\|]+",text).end():]
+            elif re.match(r"\|\|(<\-[0-9]+\>|[\|]+)\<\|[0-9]+\>",text):
+                # row - col merge
+                if Firstchar:
+                    result += "\n| "
+                    Firstchar = False
+                else:
+                    result += "|| "
+                # now put in the spanning part
+                if re.search(r"\|\|([\|]+)",text):
+                    rowmergingcell += (re.match(r"\|\|([\|]+)", text).end() - re.match(r"\|\|([\|]+)", text).start() ) // 2
+                    result += "colspan=\"" + str(rowmergingcell) + "\" "
+                    rowmergingcell = 0
+                else:
+                    result += "colspan=\"" + text[re.search(r"\<\-([0-9]+)\>", text).start()+2:re.search(r"\<\-([0-9]+)\>",text).end()-1] + "\" "
+                # put in the context with row spanning part
+                result += "rowspan=\"" + text[re.search(r"\<\|[0-9]+\>", text).start()+2:re.search(r"\<\|[0-9]+\>",text).end()-1] + "\" | " + text[re.search(r"\<\|[0-9]+\>",text).end():re.search(r"\<\|[0-9]+\>[^\|]+",text).end()]
+                text = text[re.search(r"\<\|[0-9]+\>[^\|]+",text).end():]
+            elif re.match(r"\|\|\<\|[0-9]+\>",text): # 세로 병합 기호 단독
+                if Firstchar:
+                    result += "\n| "
+                    Firstchar = False
+                else:
+                    result += "|| "
+                result += "rowspan=\"" + text[re.match(r"\|\|\<\|[0-9]+\>", text).start()+4:re.match(r"\|\|\<\|[0-9]+\>",text).end()-1] + "\" | " + text[re.match(r"\|\|\<\|[0-9]+\>",text).end():re.match(r"\|\|\<\|[0-9]+\>[^\|]+",text).end()]
+                text = text[re.match(r"\|\|\<\|[0-9]+\>([^\|]+)",text).end():]
+            elif re.match(r"\|\|\<\-[0-9]+\>",text): # 가로 병합 기호 단독
+                if Firstchar:
+                    result += "\n| "
+                    Firstchar = False
+                else:
+                    result += "|| "
+                result += "colspan=\"" + text[re.match(r"\|\|\<\-[0-9]+\>", text).start()+4:re.match(r"\|\|\<\-[0-9]+\>",text).end()-1] + "\" | " + text[re.match(r"\|\|\<\-[0-9]+\>",text).end():re.match(r"\|\|\<\-[0-9]+\>[^\|]+",text).end()]
+                text = text[re.match(r"\|\|\<\-[0-9]+\>[^\|]+",text).end():]
+            elif re.match(r"\|\|([^\|\n]+)",text): # 평범한 셀 내용
+                result += "\n" + text[re.match(r"\|\|([^\|\n]+)",text).start()+1:re.match(r"\|\|([^\|\n]+)",text).end()]
+                text = text[re.match(r"\|\|([^\|\n]+)",text).end():]
+            elif (re.match(r"\|\|\n", text)): # 개행
+                result += "\n| style=\"display:none\" |  \n|-"
+                Firstchar = True
+                text = text[re.match(r"\|\|\n",text).end():]
+                if (text == ""):
+                    result += "|}"
+            elif (re.match(r"\|\|",text)):
+                result += "\n|}"
+                text = text[2:]
+            # print(text) # debug
+        # 도로 text에 파싱된 결과를 삽입
+        text = result
+        # 최종 확인
+        # print(text)
+        return text
         
-    
+
