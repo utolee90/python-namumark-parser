@@ -570,15 +570,25 @@ class NamuMark:
             return f"<math>{tex}</math>"
         else: return ""
     
-    # <nowiki> 태그 삽입
-    def convert_to_escape_markup(text:str):
-        if not re.search(r"([\[\{#~\-\|=\(]*)\\([\[\{#~\-\|=\(]+)", text):
-            print("No matching string")
-            return text
-        while re.search(r"\\([\[\{#~\-\|=\(]+)", text) and re.search(r"\\([\[\{#~\-\|=\(]+)", text).start() != -1:
-            postmatchpoint = re.search(r"\\([\[\{#~\-\|=\(]+)", text).start()
-            prematchend = re.search(r"([\[\{#~\-\|=\(]*)\\", text).end()
-            matchpoint = re.search(r"([\[\{#~\-\|=\(]*)\\([\[\{#~\-\|=\(]+)", text).start()
-            matchend = re.search(r"([\[\{#~\-\|=\(]*)\\([\[\{#~\-\|=\(]+)", text).end()
-            text = text[0:matchpoint] + "<nowiki>" + text[matchpoint:postmatchpoint] + text[prematchend:matchend] + "</nowiki>" + text[matchend:]
-        return text
+    # 나무마크 표 파싱 및 미디어위키 표로 변환
+    # TODO: 정규표현식 최적화, 셀 꾸미기 및 이미지/동영상 삽입 개선, 캡션 달기
+    def convert_to_mw_table(text:str):
+        # [br] -> <br>로 바꾸기
+        while re.search(r"\[br\]", text) and re.search(r"\[br\]", text).start() != -1:
+            matchstart = re.search(r"\[br\]", text).start()
+            matchend = re.search(r"\[br\]",text).end()
+            text = text[0:matchstart] + "<br>" + text[matchend:]
+        # 엔터키 개행은 \n 문자를 하나 더 추가
+        regex_2 = re.compile(r"([^\n\|]+)\n([^\n\|]+)")
+        if regex_2.search(text):
+            substrings = regex_2.search(text).groups()
+            first = regex_2.search(text).start()
+            lastend = regex_2.search(text).end()
+            lastword = text[lastend+1:]
+            text = text[0:first]
+            for substring in substrings:
+                text = text + substring + "\n\n"
+            text = text + lastword
+        # 셀 병합
+        
+    
