@@ -17,9 +17,7 @@ class PlainWikiPage:
             "text": self.text if self.text else ""
         }
 
-
 class NamuMark:
-
     def __init__(self, wiki_text :dict):
 
         self.list_tag = [
@@ -39,7 +37,6 @@ class NamuMark:
             r'(^|\n)==#?\s?(.*)\s?#?==',
             r'(^|\n)=#?\s?(.*)\s?#?='
         ]
-
         self.h_tag_hide = [
             r'(^|\n)======#\s?(.*)\s?#======',
             r'(^|\n)=====#\s?(.*)\s?#=====',
@@ -48,7 +45,6 @@ class NamuMark:
             r'(^|\n)==#\s?(.*)\s?#==',
             r'(^|\n)=#\s?(.*)\s?#='
         ]
-
         self.multi_bracket = {
             "{{{": {
                 "open": "{{{",
@@ -61,7 +57,6 @@ class NamuMark:
                 "processor": "macro_processor"
             }
         }
-
         self.single_bracket = {
             "=": {
               "open": "=",
@@ -113,12 +108,12 @@ class NamuMark:
         # 문법 사용할 때 만드는 특정문자
         self.IDENTIFIER = ['[', '{', '#', '>', '~', '-', '*', '(', '=']
 
-        # 사용중인 매크로 (list, table, bq 표현)
+        # 사용중인 매크로
         self.macros= []
         #  사용중인 매크로 텍스트
         self.macro_texts = []
-        # 사용중인 랜더링 매크로 (render_processor에서 사용. html, wiki, math, syntax, inclusion, pre 등)
-        self.render_macros = []
+        # 사용중인 인라인 매크로
+        self.inline_macros = []
 
         # 위키 페이지 - TITLE / TEXT
         self.WIKI_PAGE = wiki_text
@@ -148,8 +143,8 @@ class NamuMark:
         self.parsed = ""
         self.mw = ""
 
-
         self.MIN_TITLE_INDEX = min(list(filter(lambda x: bool(re.search(self.h_tag[6-x], self.WIKI_TEXT)), range(1,7))))
+
 
 
     # parser for mediawiki -
@@ -211,6 +206,16 @@ class NamuMark:
         return self.parsed
 
     # HTML 바꾸기
+    def to_mw(self, text:str):
+        res = ""
+
+        # 넘겨주기 형식 - 빈문서로 처리
+        if re.fullmatch(r"#(?:redirect|넘겨주기) (.+)", text, flags=re.I):
+            return ""
+
+        # 정의중입니다.
+
+    # 미디어위키 스캔
     # def to_mw(self, text:str):
     #     res = ""
     #
@@ -388,7 +393,6 @@ class NamuMark:
                 res.append(f"{key[:-2]}. {val_0}")
             else:
                 res.append(f"{key}. {val_0}")
-
         return res
 
     # 헤드라인용 처리
@@ -893,16 +897,13 @@ class NamuMark:
             yr = re.match(r"dday\((\d\d\d\d)-(\d\d)-(\d\d)\)", text).group(1)
             mn = re.match(r"dday\((\d\d\d\d)-(\d\d)-(\d\d)\)", text).group(2)
             dy = re.match(r"dday\((\d\d\d\d)-(\d\d)-(\d\d)\)", text).group(3)
-
             return f"{{{{#ifexpr:{{{{#time:U|now}}}} - {{{{#time:U|{yr}-{mn}-{dy}}}}}>0|+}}}}{{{{#expr:floor (({{{{#time:U|now}}}} - {{{{#time:U|{yr}-{mn}-{dy}}}}})/86400)}}}}"
-
         # 수식 기호
         elif re.match(r"math\((.*)\)", text):
             tex = re.match(r"math\((.*)\)", text).group(1)
             return f"<math>{tex}</math>"
-
-        # 앵커 기호
-        elif re.match(r"anchor\((.*)\)", text):
+            # 앵커 기호
+            elif re.match(r"anchor\((.*)\)", text):
             aname = re.match(r"anchor\((.*)\)", text).group(1)
             return f"<span id='{aname}></span>"
 
@@ -922,8 +923,8 @@ class NamuMark:
         # 틀 포함 문구
         elif re.match(r"include\((.*)\)", text):
             conts = re.match(r"include\((.*)\)", text).group(1)
-            conts_list = conts.split(',') # 안의 내용 - 틀:틀이름,변수1=값1,변수2=값2,
-            transcluding = conts_list[0].strip() # 문서 목록
+            conts_list = conts.split(',')  # 안의 내용 - 틀:틀이름,변수1=값1,변수2=값2,
+            transcluding = conts_list[0].strip()  # 문서 목록
             res = f"{{{{{transcluding}"
             # 내부에 변수 없을 때
             if len(conts_list) == 1:
@@ -931,11 +932,11 @@ class NamuMark:
             # 내부에 변수가 있을 때
             else:
                 for vars in conts_list[1:]:
-                    res += "|"+vars
+                    res += "|" + vars
                 return res + "}}"
 
-
-        else: return ""
+        else:
+            return ""
 
     # 한 줄짜리 링크형태 문법 처리
     def link_processor(self, link, text):
@@ -953,7 +954,135 @@ class NamuMark:
         else:
             return f"[[{link}]]" if text == "" else f"[[{link}|{self.render_processor(text)}]]"
 
-
+    # 표 파싱 함수
+    # 인자: text -> 나무마크 문서 데이터 중 표 부분만 따온 부분 텍스트(주의: 전체 문서 텍스트를 넣지 말 것!)
+    # TODO: 정규표현식 최적화, 셀 내부 꾸미기 기능 구현
+    def convert_to_mw_table(text:str):
+        # [br] -> <br>로 바꾸기
+        while re.search(r"\[br\]", text) and re.search(r"\[br\]", text).start() != -1:
+            matchstart = re.search(r"\[br\]", text).start()
+            matchend = re.search(r"\[br\]",text).end()
+            text = text[0:matchstart] + "<br>" + text[matchend:]
+        # 엔터키 개행은 \n 문자를 하나 더 추가
+        regex_2 = re.compile(r"([^\n\|]+)\n([^\n\|]+)")
+        if regex_2.search(text):
+            substrings = regex_2.search(text).groups()
+            first = regex_2.search(text).start()
+            lastend = regex_2.search(text).end()
+            lastword = text[lastend+1:]
+            text = text[0:first]
+            for substring in substrings:
+                text = text + substring + "\n\n"
+            text = text + lastword
+        print(text)
+        print("----------")
+        # 셀 병합 및 '{| class="wikitable", '|+' |', '|-', '|}'등의 기호로 변형 : 최종 작업 단계
+        result = "{| class=\"wikitable\" "
+        rowmergingcell = 0
+        RowMergingCellNum = 0
+        Firstchar = True
+        while (re.match(r"\|", text)):
+            if (re.match(r"\|([^\|\n]+)\|", text)):
+                result += "\n|+ " + text[re.match(r"\|([^\|\n]+)\|", text).start()+1:re.match(r"\|([^\|\n]+)\|", text).end()-1]
+                text = "||" + text[re.match(r"\|([^\|\n]+)\|", text).end():]
+            elif (re.match(r"\|\|([\|]+)(\<\|[0-9]+\>)?([^\n]+)(\|\|\n)?", text)): # 여러 개의 | 문자로 가로 병합하는 경우 또는 세로 병합을 위한 더미 셀 추가
+                if RowMergingCellNum > 0: # 더미 셀이 필요함
+                    for i in range(0, RowMergingCellNum):
+                        result += "\n| style=\"display:none\" | "
+                    RowMergingCellNum = 0
+                elif re.search(r"\|\|([\|]+)\<\|[0-9]+\>([^\|]+)", text): # 가로 -> 세로 병합
+                    rowmergingcell = (re.match(r"\|\|([\|]+)",text).end() - re.match(r"\|\|([\|]+)",text).start()) // 2
+                    result += "\n| colspan=\""+ str(rowmergingcell) + "\" rowspan=\""+ text[re.search(r"\<\|[0-9]+\>", text).start()+2:re.search(r"\<\|[0-9]+\>",text).end()-1] +"\" | "
+                    result += text[re.search(r"<\|([0-9]+)\>", text).end():re.search(r"<\|([0-9]+)\>([^\|]+)", text).end()]
+                    rowmergingcell = 0
+                else: # 가로 병합
+                    rowmergingcell = (re.match(r"\|\|([\|]+)",text).end() - re.match(r"\|\|([\|]+)",text).start()) // 2
+                    result += "\n| colspan=\""+ str(rowmergingcell) + "\" | "
+                    rowmergingcell = 0
+                    result += text[re.match(r"\|\|([\|]+)", text).end():re.match(r"\|\|([\|]+)([^\|\n]+)", text).end()]
+                text = text[re.match(r"\|\|([\|]+)(\<\|[0-9]+\>)*([^\|\n]+)",text).end():]
+                if (text == ""):
+                    result += "\n|}"
+            elif re.match(r"\|\|([\|]+)\n", text): # 가로 병합 때 버려질 셀들을 처리
+                rowmergingcell = (re.match(r"\|\|([\|]+)",text).end() - re.match(r"\|\|([\|]+)",text).start()) // 2
+                for i in range(0, rowmergingcell+1):
+                    if i == 0:
+                        result += "\n| style=\"display:none\" | "
+                rowmergingcell = 0
+                result += "\n|-"
+                text = text[re.match(r"\|\|([\|])+\n", text).end():]
+                if (text == ""):
+                    result += "\n|}"
+            elif re.match(r"\|\|\<\|[0-9]+\>(\<\-[0-9]+\>|\|\|([\|]*))",text):
+                # col - row merge
+                if Firstchar:
+                    result += "\n| "
+                    Firstchar = False
+                else:
+                    result += "|| "
+                # now put in the spanning part
+                result += "rowspan=\"" + text[re.search(r"\<\|([0-9]+)\>", text).start()+2:re.search(r"\<\|([0-9]+)\>",text).end()-1] + "\" "
+                if re.search(r"\|\|([\|]+)", text[2:]):
+                    rowmergingcell += (re.match(r"\|\|([\|]+)", text[2:]).end() - re.match(r"\|\|([\|]+)", text[2:]).start() ) // 2
+                    result += "colspan=\"" + str(rowmergingcell) + "\" | "
+                    RowMergingCellNum += rowmergingcell
+                    rowmergingcell = 0
+                else:
+                    result += "colspan=\"" + text[re.search(r"\<\-[0-9]+\>", text).start()+2:re.search(r"\<\-[0-9]+\>",text).end()-1] + "\" | "
+                # put in the context
+                result += text[re.search(r"\<\-[0-9]+\>",text).end():re.search(r"\<\-[0-9]+\>[^\|]+",text).end()] + " |" + text[re.search(r"\<\-[0-9]+\>",text).end():re.search(r"\<\-[0-9]+\>[^\|]+",text).end()] + " |"
+                text = text[re.search(r"\<\-[0-9]+\>[^\|]+",text).end():]
+            elif re.match(r"\|\|(<\-[0-9]+\>|[\|]+)\<\|[0-9]+\>",text):
+                # row - col merge
+                if Firstchar:
+                    result += "\n| "
+                    Firstchar = False
+                else:
+                    result += "|| "
+                # now put in the spanning part
+                if re.search(r"\|\|([\|]+)",text):
+                    rowmergingcell += (re.match(r"\|\|([\|]+)", text).end() - re.match(r"\|\|([\|]+)", text).start() ) // 2
+                    result += "colspan=\"" + str(rowmergingcell) + "\" "
+                    rowmergingcell = 0
+                else:
+                    result += "colspan=\"" + text[re.search(r"\<\-([0-9]+)\>", text).start()+2:re.search(r"\<\-([0-9]+)\>",text).end()-1] + "\" "
+                # put in the context with row spanning part
+                result += "rowspan=\"" + text[re.search(r"\<\|[0-9]+\>", text).start()+2:re.search(r"\<\|[0-9]+\>",text).end()-1] + "\" | " + text[re.search(r"\<\|[0-9]+\>",text).end():re.search(r"\<\|[0-9]+\>[^\|]+",text).end()]
+                text = text[re.search(r"\<\|[0-9]+\>[^\|]+",text).end():]
+            elif re.match(r"\|\|\<\|[0-9]+\>",text): # 세로 병합 기호 단독
+                if Firstchar:
+                    result += "\n| "
+                    Firstchar = False
+                else:
+                    result += "|| "
+                result += "rowspan=\"" + text[re.match(r"\|\|\<\|[0-9]+\>", text).start()+4:re.match(r"\|\|\<\|[0-9]+\>",text).end()-1] + "\" | " + text[re.match(r"\|\|\<\|[0-9]+\>",text).end():re.match(r"\|\|\<\|[0-9]+\>[^\|]+",text).end()]
+                text = text[re.match(r"\|\|\<\|[0-9]+\>([^\|]+)",text).end():]
+            elif re.match(r"\|\|\<\-[0-9]+\>",text): # 가로 병합 기호 단독
+                if Firstchar:
+                    result += "\n| "
+                    Firstchar = False
+                else:
+                    result += "|| "
+                result += "colspan=\"" + text[re.match(r"\|\|\<\-[0-9]+\>", text).start()+4:re.match(r"\|\|\<\-[0-9]+\>",text).end()-1] + "\" | " + text[re.match(r"\|\|\<\-[0-9]+\>",text).end():re.match(r"\|\|\<\-[0-9]+\>[^\|]+",text).end()]
+                text = text[re.match(r"\|\|\<\-[0-9]+\>[^\|]+",text).end():]
+            elif re.match(r"\|\|([^\|\n]+)",text): # 평범한 셀 내용
+                result += "\n" + text[re.match(r"\|\|([^\|\n]+)",text).start()+1:re.match(r"\|\|([^\|\n]+)",text).end()]
+                text = text[re.match(r"\|\|([^\|\n]+)",text).end():]
+            elif (re.match(r"\|\|\n", text)): # 개행
+                result += "\n| style=\"display:none\" |  \n|-"
+                Firstchar = True
+                text = text[re.match(r"\|\|\n",text).end():]
+                if (text == ""):
+                    result += "|}"
+            elif (re.match(r"\|\|",text)):
+                result += "\n|}"
+                text = text[2:]
+            # print(text) # debug
+        # 도로 text에 파싱된 결과를 삽입
+        text = result
+        # 최종 확인
+        # print(text)
+        return text
 
 
 
