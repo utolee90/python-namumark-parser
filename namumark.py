@@ -145,8 +145,9 @@ class NamuMark:
         self.parsed = ""
         self.mw = ""
 
-        self.MIN_TITLE_INDEX = min(
-            list(filter(lambda x: bool(re.search(self.h_tag[6 - x], self.WIKI_TEXT)), range(1, 7))))
+        if re.search(r"(^|\n)=+.*=+", self.WIKI_TEXT):
+            self.MIN_TITLE_INDEX = min(
+                list(filter(lambda x: bool(re.search(self.h_tag[6 - x], self.WIKI_TEXT)), range(1, 7))))
 
     # parser for mediawiki -
     @staticmethod
@@ -259,19 +260,23 @@ class NamuMark:
 
         # 줄 단위로 패턴 검색후 파서 적용하기
         idx = 0
-        while idx < len(strlines):
-            cur_line = strlines[idx]
-            if self.get_pattern(cur_line) == "hr":
-                result += "<hr />\n"
-            elif self.get_pattern(cur_line) == "comment":
-                cont = re.match("^##(.*)", cur_line).group(1)
-                result += f"<!--{cont}-->\n"
-            elif self.get_pattern(cur_line) == 'header':
-                result += self.header_processor(parser_result) + '\n'
+        while idx <= len(strlines):
+            cur_line = strlines[idx] if idx < len(strlines) else ''
 
-            # 매크로가 동일할 때 - list, bq, table, none
-            elif macros == self.get_pattern(cur_line):
-                parser_result += cur_line + '\n'
+            if macros == self.get_pattern(cur_line):
+                # 한 줄 짜리이면 무조건...
+                if self.get_pattern(cur_line) == "hr":
+                    result += "<hr />\n"
+                    parser_result = cur_line + '\n'
+                elif self.get_pattern(cur_line) == "comment":
+                    cont = re.match("^##(.*)\n?", parser_result).group(1)
+                    result += f"<!--{cont}-->\n"
+                    parser_result = cur_line + '\n'
+                elif self.get_pattern(cur_line) == 'header':
+                    result += self.header_processor(parser_result)
+                    parser_result = cur_line + '\n'
+                else:  # 여러줄 처리가 가능한 매크로 - parser_result  추가
+                    parser_result += cur_line + '\n'
 
             # 매크로가 달라질 때
             else:
@@ -284,16 +289,27 @@ class NamuMark:
                 elif macros == 'table':
                     # 표 파서 결과 추가
                     result += self.convert_to_mw_table(parser_result)
-                else:
+                elif macros == 'none':
                     # 파서 결과 추가
                     result += self.render_processor(parser_result, 'multi')
+                elif macros == 'hr':
+                    result += "<hr />\n"
+                elif macros == 'comment':
+                    cont = re.match("^##(.*)\n?", parser_result).group(1)
+                    result += f"<!--{cont}-->\n"
+                elif macros == 'header':
+                    result += self.header_processor(parser_result) + '\n'
 
                 #
-                parser_result = ""
+                parser_result = cur_line + '\n'
                 macros = self.get_pattern(cur_line)
                 self.macros = macros
 
             idx += 1
+
+        # 매크로가 none일 때
+        if parser_result != "" and parser_result != "\n":
+            result += self.render_processor(parser_result, 'multi')
 
         return result
 
@@ -602,8 +618,12 @@ class NamuMark:
                             res += crlines  # 2행 이상 개행시에는 똑같이 개행
                             r += len(crlines)
                             temp_preparsed = ""
-                        elif text[r + 1] != "\n":  # 한줄 개행이면 <br/>기호 삽입.
+                        elif r < len(text) - 1 and text[r + 1] != "\n":  # 한줄 개행이면 <br/>기호 삽입.
                             res += "<br />"
+                            r += 1
+                            temp_preparsed = ""
+                        elif r == len(text) - 1:  # 마지막 글자가 개행문자면 그냥 개행문자로 처리
+                            res += "\n"
                             r += 1
                             temp_preparsed = ""
                     # 나머지 케이스
@@ -945,7 +965,7 @@ class NamuMark:
             conts = re.match(r"include\((.*)\)", text).group(1)
             conts_list = conts.split(',')  # 안의 내용 - 틀:틀이름,변수1=값1,변수2=값2,
             transcluding = conts_list[0].strip()  # 문서 목록
-            res = f"{{{{{transcluding}"
+            res = f"{{{{{transcluding}" if ":" in transcluding else f"{{{{:{transcluding}"
             # 내부에 변수 없을 때
             if len(conts_list) == 1:
                 return res + "}}"

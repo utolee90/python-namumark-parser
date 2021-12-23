@@ -17,14 +17,15 @@ def main():
 
         parser = NamuMark(file_dict)
 
-        #HTML = parser.parse_HTML()
-
         mw = parser.parse_mw()
 
-        with open('mw.txt', 'w', encoding='utf-8') as f2:
-           f2.write(mw, ensure_ascii=False)
+        open_text = "mw.txt"
+        if len(sys.argv)>2:
+            save_name = sys.argv[2]
+            open_text = f"{save_name}.txt"
 
-
+        with open(open_text, 'w', encoding='utf-8') as f2:
+           f2.write(mw)
 
 if __name__ == "__main__":
     main()
