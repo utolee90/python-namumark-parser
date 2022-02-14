@@ -997,12 +997,12 @@ class NamuMark:
     # 표 파싱 함수
     # 인자: text -> 나무마크 문서 데이터 중 표 부분만 따온 부분 텍스트(주의: 전체 문서 텍스트를 넣지 말 것!)
     # TODO: 정규표현식 최적화, 셀 내부 꾸미기 기능 구현
-    def convert_to_mw_table(text: str):
-        # [br] -> <br>로 바꾸기
+    def convert_to_mw_table(self, text: str):
+        # [br] -> <br/>로 바꾸기
         while re.search(r"\[br\]", text) and re.search(r"\[br\]", text).start() != -1:
             matchstart = re.search(r"\[br\]", text).start()
             matchend = re.search(r"\[br\]", text).end()
-            text = text[0:matchstart] + "<br>" + text[matchend:]
+            text = text[0:matchstart] + "<br/>" + text[matchend:]
         # 엔터키 개행은 \n 문자를 하나 더 추가
         regex_2 = re.compile(r"([^\n\|]+)\n([^\n\|]+)")
         if regex_2.search(text):
