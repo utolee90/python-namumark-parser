@@ -370,6 +370,7 @@ class NamuMark:
 
         return {"titles": titles, "parts": parts}
 
+    # 헤딩 구조 문서 나누기 부분
     def title_structure_part(self, text: str, level: int):
         parts = []
         titles = ['']
@@ -993,6 +994,69 @@ class NamuMark:
 
         else:
             return f"[[{link}]]" if text == "" else f"[[{link}|{self.render_processor(text)}]]"
+
+    # 블록 파싱 함수
+    # 우선 [br]태그로 다음 줄로 넘기는 방식은 사용하지 않으며, 맨 앞에 >가 있다는 것을 보증할 때에만 사용
+    def bq_parser(self, text):
+        print('function_start!!!')
+        res = ''
+        open_tag = '<blockquote style="border: 1px dashed grey; border-left: 3px solid #4188f1; padding:2px; margin:5px;">'
+        close_tag = '</blockquote>'
+        text_wo_bq = re.sub(r'>(.*?)(\n|$)', r'\1\2', text) # 맨 앞 >기호 없애기
+        idx = 0 #첫 인덱스
+        tmp_block = '' # blockquote로 묶을 수 있는 부분인지 확인할 것.
+        tmp_etc = "" # blockquote 바깥의 부분
+        print("text_wo_bq: ", text_wo_bq)
+        print()
+        while idx <len(text_wo_bq):
+            # 첫 번째 개행 위치 찾기
+            idx1 = text_wo_bq[idx:].find('\n')
+            # 개행할 게 남아있으면
+            if idx1 > -1:
+                tmp_line = text_wo_bq[idx:idx + idx1 + 1]
+                print("tmp_line : ", tmp_line, idx)
+                # 만약 여전히 블록 안에 있을 때
+                if re.match(r">(.*?)\n", tmp_line):
+                    if tmp_etc != "":
+                        res += self.render_processor(tmp_etc, "multi")
+                        print("tmp_etc : ", tmp_etc)
+                        tmp_etc = ""
+                    tmp_block += tmp_line
+                # blockquote 안에 없는 부분이면
+                else:
+                    if tmp_block != "":
+                        res += self.bq_parser(tmp_block[:-1])+'\n' # 마지막줄이 아니므로 마지막 개행 기호 지우고 개행기호 붙이기
+                        tmp_block = ""
+                        print("tmp_block : ", tmp_block)
+                    tmp_etc += tmp_line
+
+                idx = idx + idx1 + 1 # 개행문자 다음에 추가
+
+            # 마지막줄일 때 실행
+            if idx1 == -1 or idx == len(text_wo_bq):
+                print('endL--')
+                tmp_line = text_wo_bq[idx:]
+                print("tmp_line : ", tmp_line, idx)
+                if re.match(r">(.*?)", tmp_line):
+                    if tmp_etc !="":
+                        res += self.render_processor(tmp_etc, "multi")
+                        print("tmp_etc : ", tmp_etc)
+                        tmp_etc = ""
+                    tmp_block += tmp_line
+                    print("tmp_block: ", tmp_block)
+                    res += self.bq_parser(tmp_block)
+                else:
+                    if tmp_block != "":
+                        res += self.bq_parser(tmp_block[:-1])+'\n' # 마지막줄이 아니므로 마지막 개행 기호 지우고 개행기호 붙이기
+                        print("tmp_block : ", tmp_block)
+                        tmp_block = ""
+                    tmp_etc += tmp_line
+                    print("tmp_etc: ", tmp_etc)
+                    res += self.render_processor(tmp_etc, "multi")
+                idx = len(text_wo_bq)
+
+        print('function_end')
+        return open_tag+'\n'+res+'\n'+close_tag
 
     # 표 파싱 함수
     # 인자: text -> 나무마크 문서 데이터 중 표 부분만 따온 부분 텍스트(주의: 전체 문서 텍스트를 넣지 말 것!)
