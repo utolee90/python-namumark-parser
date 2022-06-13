@@ -1,9 +1,6 @@
 import re
-import string
-import os
 
 from template import WEB_COLOR_LIST
-from processor import Processor
 
 class PlainWikiPage:
 
@@ -18,95 +15,10 @@ class PlainWikiPage:
         }
 
 
-class NamuMark:
+class NamuMark(NamuMarkConstant):
+
+    # dict 형태 : {"title": (문서 제목), "text": (위키 문법)}
     def __init__(self, wiki_text: dict):
-
-        self.list_tag = [
-            ['*', 'ul'],
-            ['1.', 'ol class="decimal"'],
-            ['A.', 'ol class="upper-alpha"'],
-            ['a.', 'ol class="lower-alpha"'],
-            ['I.', 'ol class="upper-roman"'],
-            ['i.', 'ol class="lower-roman"'],
-        ]
-        self.h_tag = [
-            r'(^|\n)======#?\s?(.*)\s?#?======\s*(\n|$)',
-            r'(^|\n)=====#?\s?(.*)\s?#?=====\s*(\n|$)',
-            r'(^|\n)====#?\s?(.*)\s?#?====\s*(\n|$)',
-            r'(^|\n)===#?\s?(.*)\s?#?===\s*(\n|$)',
-            r'(^|\n)==#?\s?(.*)\s?#?==\s*(\n|$)',
-            r'(^|\n)=#?\s?(.*)\s?#?=\s*(\n|$)'
-        ]
-        self.h_tag_hide = [
-            r'(^|\n)======#\s?(.*)\s?#======\s*(\n|$)',
-            r'(^|\n)=====#\s?(.*)\s?#=====\s*(\n|$)',
-            r'(^|\n)====#\s/(.*)\s?#====\s*(\n|$)',
-            r'(^|\n)===#\s?(.*)\s?#===\s*(\n|$)',
-            r'(^|\n)==#\s?(.*)\s?#==\s*(\n|$)',
-            r'(^|\n)=#\s?(.*)\s?#=\s*(\n|$)'
-        ]
-        self.multi_bracket = {
-            "{{{": {
-                "open": "{{{",
-                "close": "}}}",
-                "processor": "render_processor"
-            },
-            "[": {
-                "open": "[",
-                "close": "]",
-                "processor": "macro_processor"
-            }
-        }
-        self.single_bracket = {
-            "=": {
-                "open": "=",
-                "close": "=",
-                "processor": "header_processor"
-            },
-            "{{{": {
-                "open": "{{{",
-                "close": "}}}",
-                "processor": "text_processor"
-            },
-            "[[": {
-                "open": "[[",
-                "close": "]]",
-                "processor": "link_processor"
-            },
-            "[": {
-                "open": "[",
-                "close": "]",
-                "processor": "macro_processor"
-            },
-            "~~": {
-                "open": "~~",
-                "close": "~~",
-                "processor": "text_processor"
-            },
-            "--": {
-                "open": "--",
-                "close": "--",
-                "processor": "text_processor"
-            },
-            "__": {
-                "open": "__",
-                "close": "__",
-                "processor": "text_processor"
-            },
-            "^^": {
-                "open": "^^",
-                "close": "^^",
-                "processor": "text_processor"
-            },
-            ",,": {
-                "open": ",,",
-                "close": ",,",
-                "processor": "text_processor"
-            }
-        }
-
-        # 문법 사용할 때 만드는 특정문자
-        self.IDENTIFIER = ['[', '{', '#', '>', '~', '-', '*', '(', '=']
 
         # 사용중인 매크로 - none, list, table, bq, etc...
         self.macros = ""
@@ -148,32 +60,6 @@ class NamuMark:
         if re.search(r"(^|\n)=+.*=+", self.WIKI_TEXT):
             self.MIN_TITLE_INDEX = min(
                 list(filter(lambda x: bool(re.search(self.h_tag[6 - x], self.WIKI_TEXT)), range(1, 7))))
-
-    # parser for mediawiki -
-    @staticmethod
-    def pre_parser(text: str):
-        # <>태그 왼쪽 괄호 해제
-        text = re.sub(r"<(/?[a-zA-Z0-9]*?)>", r"&lt;\1>", text)
-        # &;태그 왼쪽 amp 치환
-        text = re.sub(r"&([#0-9A-Za-z]*?);", r"&amp;\1;", text)
-
-        return text
-
-    # 템플릿 안에 사용할 때 풀어쓰기
-    @staticmethod
-    def inner_template(text: str):
-        return text.replace('{|', '{{{!}}').replace('|}', '{{!}}}').replace('||', '{{!!}}').replace('|', '{{!}}')
-
-    # 복잡한 배열 - 선형으로 고치기 -> [[a,b,c],[d,[e,f]]]=> [a,b,c,d,e,f]
-    @classmethod
-    def simplify_array(cls, args):
-        res = []
-        for elem in args:
-            if "list" not in str(type(elem)):
-                res.append(elem)
-            else:
-                res.extend(cls.simplify_array(elem))
-        return res
 
     # 문단 위치-> 이름 찾기 -> 정수열로...
     def find_paragraph_by_index(self, *args):
@@ -239,7 +125,6 @@ class NamuMark:
     3.1. 패턴이 동일할 경우 pattern_result 변수에 내용 추가
     3.2. 다음 줄의 패턴이 달라질 경우 patter_result 결과를 정의한 후 pattern에 따른 프로세서를 이용해서 파싱된 내용 추가
     '''
-
     def mw_scan(self, text: str):
         # 결과
         result = ""
@@ -1225,5 +1110,142 @@ class NamuMark:
         # 최종 확인
         # print(text)
         return text
+
+
+# 나무마크 상수 정의 함수
+class NamuMarkConstant:
+
+    # ul, ol 리스트용 태그
+    LIST_TAG = [
+            ['*', 'ul'],
+            ['1.', 'ol class="decimal"'],
+            ['A.', 'ol class="upper-alpha"'],
+            ['a.', 'ol class="lower-alpha"'],
+            ['I.', 'ol class="upper-roman"'],
+            ['i.', 'ol class="lower-roman"'],
+        ]
+    # 문단 제목용 태그
+    H_TAG = [
+            r'(^|\n)======#?\s?(.*)\s?#?======\s*(\n|$)',
+            r'(^|\n)=====#?\s?(.*)\s?#?=====\s*(\n|$)',
+            r'(^|\n)====#?\s?(.*)\s?#?====\s*(\n|$)',
+            r'(^|\n)===#?\s?(.*)\s?#?===\s*(\n|$)',
+            r'(^|\n)==#?\s?(.*)\s?#?==\s*(\n|$)',
+            r'(^|\n)=#?\s?(.*)\s?#?=\s*(\n|$)'
+        ]
+    # 숨김 문단 제목용 태그
+    H_TAG_HIDE = [
+        r'(^|\n)======#\s?(.*)\s?#======\s*(\n|$)',
+        r'(^|\n)=====#\s?(.*)\s?#=====\s*(\n|$)',
+        r'(^|\n)====#\s/(.*)\s?#====\s*(\n|$)',
+        r'(^|\n)===#\s?(.*)\s?#===\s*(\n|$)',
+        r'(^|\n)==#\s?(.*)\s?#==\s*(\n|$)',
+        r'(^|\n)=#\s?(.*)\s?#=\s*(\n|$)'
+    ]
+    # 여러줄 문법 태그
+    MULTI_BRACKET = {
+            "{{{": {
+                "open": "{{{",
+                "close": "}}}",
+                "processor": "render_processor"
+            },
+            "[": {
+                "open": "[",
+                "close": "]",
+                "processor": "macro_processor"
+            }
+        }
+    # 한줄 문법 태그
+    SINGLE_BRACKET = {
+            "=": {
+                "open": "=",
+                "close": "=",
+                "processor": "header_processor"
+            },
+            "{{{": {
+                "open": "{{{",
+                "close": "}}}",
+                "processor": "text_processor"
+            },
+            "[[": {
+                "open": "[[",
+                "close": "]]",
+                "processor": "link_processor"
+            },
+            "[": {
+                "open": "[",
+                "close": "]",
+                "processor": "macro_processor"
+            },
+            "~~": {
+                "open": "~~",
+                "close": "~~",
+                "processor": "text_processor"
+            },
+            "--": {
+                "open": "--",
+                "close": "--",
+                "processor": "text_processor"
+            },
+            "__": {
+                "open": "__",
+                "close": "__",
+                "processor": "text_processor"
+            },
+            "^^": {
+                "open": "^^",
+                "close": "^^",
+                "processor": "text_processor"
+            },
+            ",,": {
+                "open": ",,",
+                "close": ",,",
+                "processor": "text_processor"
+            }
+        }
+
+    # 나무마크에서 <, &기호를 문법 표시로 치환하기. 미디어위키에서 예상치 못한 태그 사용을 방지하기 위한 조치
+    @staticmethod
+    def pre_parser(text:str):
+        # <>태그 왼쪽 괄호 해제
+        text = re.sub(r"<(/?[a-zA-Z0-9]*?)>", r"&lt;\1>", text)
+        # &;태그 왼쪽 amp 치환
+        text = re.sub(r"&([#0-9A-Za-z]*?);", r"&amp;\1;", text)
+
+        return text
+
+    # 미디어위키에서 템플릿 안에 내용의 문자를 집어넣을 때 내용 치환
+    @staticmethod
+    def inner_template(text: str):
+        return text.replace('{|', '{{{!}}').replace('|}', '{{!}}}').replace('||', '{{!!}}').replace('|', '{{!}}')
+
+    # 다단 리스트 - 풀어써서 1단 리스트로 고치기 [[a,b,c],[d,[e,f]]]=> [a,b,c,d,e,f]
+    @classmethod
+    def simplify_array(cls, args):
+        res = []
+        for elem in args:
+            if "list" not in str(type(elem)):
+                res.append(elem)
+            else:
+                res.extend(cls.simplify_array(elem))
+        return res
+
+    # 복잡한 리스트 -> 딕셔너리 형태로 정리
+    # ['일번', ['이번','삼번']] => {'0': '일번', '1': '이번', '1.1':'삼번'}
+    @classmethod
+    def unravel_list(cls, args):
+        res = {}
+        for (idx, elem) in enumerate(args):
+            if 'list' not in str(type(elem)):
+                res[str(idx)] = elem
+            else:
+                res_0 = cls.unravel_list(elem)
+                for (key, val) in res_0.items():
+                    res[f"{idx}.{key}"] = val
+        return res
+
+
+
+
 
 
