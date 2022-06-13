@@ -191,7 +191,7 @@ class NamuMark(NamuMarkConstant):
 
         if re.search(r"(^|\n)=+.*=+", self.WIKI_TEXT):
             self.MIN_TITLE_INDEX = min(
-                list(filter(lambda x: bool(re.search(self.h_tag[6 - x], self.WIKI_TEXT)), range(1, 7))))
+                list(filter(lambda x: bool(re.search(self.H_TAG[6 - x], self.WIKI_TEXT)), range(1, 7))))
 
     # 문단 위치-> 이름 찾기 -> 정수열로...
     def find_paragraph_by_index(self, *args):
@@ -393,7 +393,7 @@ class NamuMark(NamuMarkConstant):
         titles = ['']
         # 문단별로 나누기
         tmp = 0
-        paragraph_pattern = self.h_tag[6 - level]
+        paragraph_pattern = self.H_TAG[6 - level]
         title_patterns = re.finditer(paragraph_pattern, text)
         for pat in title_patterns:
             starting = pat.start()  # 시작 위치. 개행기호 \n  위치
@@ -969,7 +969,7 @@ class NamuMark(NamuMarkConstant):
             conts = re.match(r"include\((.*)\)", text).group(1)
             conts_list = conts.split(',')  # 안의 내용 - 틀:틀이름,변수1=값1,변수2=값2,
             transcluding = conts_list[0].strip()  # 문서 목록
-            res = f"{{{{{transcluding}" if ":" in transcluding else f"{{{{:{transcluding}"
+            res = f"{{{{{transcluding}" if ":" in transcluding else f"{{{{{:transcluding}"
             # 내부에 변수 없을 때
             if len(conts_list) == 1:
                 return res + "}}"
