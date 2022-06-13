@@ -14,6 +14,138 @@ class PlainWikiPage:
             "text": self.text if self.text else ""
         }
 
+# 나무마크 상수 정의 함수
+class NamuMarkConstant:
+
+    # ul, ol 리스트용 태그
+    LIST_TAG = [
+            ['*', 'ul'],
+            ['1.', 'ol class="decimal"'],
+            ['A.', 'ol class="upper-alpha"'],
+            ['a.', 'ol class="lower-alpha"'],
+            ['I.', 'ol class="upper-roman"'],
+            ['i.', 'ol class="lower-roman"'],
+        ]
+    # 문단 제목용 태그
+    H_TAG = [
+            r'(^|\n)======#?\s?(.*)\s?#?======\s*(\n|$)',
+            r'(^|\n)=====#?\s?(.*)\s?#?=====\s*(\n|$)',
+            r'(^|\n)====#?\s?(.*)\s?#?====\s*(\n|$)',
+            r'(^|\n)===#?\s?(.*)\s?#?===\s*(\n|$)',
+            r'(^|\n)==#?\s?(.*)\s?#?==\s*(\n|$)',
+            r'(^|\n)=#?\s?(.*)\s?#?=\s*(\n|$)'
+        ]
+    # 숨김 문단 제목용 태그
+    H_TAG_HIDE = [
+        r'(^|\n)======#\s?(.*)\s?#======\s*(\n|$)',
+        r'(^|\n)=====#\s?(.*)\s?#=====\s*(\n|$)',
+        r'(^|\n)====#\s/(.*)\s?#====\s*(\n|$)',
+        r'(^|\n)===#\s?(.*)\s?#===\s*(\n|$)',
+        r'(^|\n)==#\s?(.*)\s?#==\s*(\n|$)',
+        r'(^|\n)=#\s?(.*)\s?#=\s*(\n|$)'
+    ]
+    # 여러줄 문법 태그
+    MULTI_BRACKET = {
+            "{{{": {
+                "open": "{{{",
+                "close": "}}}",
+                "processor": "render_processor"
+            },
+            "[": {
+                "open": "[",
+                "close": "]",
+                "processor": "macro_processor"
+            }
+        }
+    # 한줄 문법 태그
+    SINGLE_BRACKET = {
+            "=": {
+                "open": "=",
+                "close": "=",
+                "processor": "header_processor"
+            },
+            "{{{": {
+                "open": "{{{",
+                "close": "}}}",
+                "processor": "text_processor"
+            },
+            "[[": {
+                "open": "[[",
+                "close": "]]",
+                "processor": "link_processor"
+            },
+            "[": {
+                "open": "[",
+                "close": "]",
+                "processor": "macro_processor"
+            },
+            "~~": {
+                "open": "~~",
+                "close": "~~",
+                "processor": "text_processor"
+            },
+            "--": {
+                "open": "--",
+                "close": "--",
+                "processor": "text_processor"
+            },
+            "__": {
+                "open": "__",
+                "close": "__",
+                "processor": "text_processor"
+            },
+            "^^": {
+                "open": "^^",
+                "close": "^^",
+                "processor": "text_processor"
+            },
+            ",,": {
+                "open": ",,",
+                "close": ",,",
+                "processor": "text_processor"
+            }
+        }
+
+    # 나무마크에서 <, &기호를 문법 표시로 치환하기. 미디어위키에서 예상치 못한 태그 사용을 방지하기 위한 조치
+    @staticmethod
+    def pre_parser(text:str):
+        # <>태그 왼쪽 괄호 해제
+        text = re.sub(r"<(/?[a-zA-Z0-9]*?)>", r"&lt;\1>", text)
+        # &;태그 왼쪽 amp 치환
+        text = re.sub(r"&([#0-9A-Za-z]*?);", r"&amp;\1;", text)
+
+        return text
+
+    # 미디어위키에서 템플릿 안에 내용의 문자를 집어넣을 때 내용 치환
+    @staticmethod
+    def inner_template(text: str):
+        return text.replace('{|', '{{{!}}').replace('|}', '{{!}}}').replace('||', '{{!!}}').replace('|', '{{!}}')
+
+    # 다단 리스트 - 풀어써서 1단 리스트로 고치기 [[a,b,c],[d,[e,f]]]=> [a,b,c,d,e,f]
+    @classmethod
+    def simplify_array(cls, args):
+        res = []
+        for elem in args:
+            if "list" not in str(type(elem)):
+                res.append(elem)
+            else:
+                res.extend(cls.simplify_array(elem))
+        return res
+
+    # 복잡한 리스트 -> 딕셔너리 형태로 정리
+    # ['일번', ['이번','삼번']] => {'0': '일번', '1': '이번', '1.1':'삼번'}
+    @classmethod
+    def unravel_list(cls, args):
+        res = {}
+        for (idx, elem) in enumerate(args):
+            if 'list' not in str(type(elem)):
+                res[str(idx)] = elem
+            else:
+                res_0 = cls.unravel_list(elem)
+                for (key, val) in res_0.items():
+                    res[f"{idx}.{key}"] = val
+        return res
+
 
 class NamuMark(NamuMarkConstant):
 
@@ -272,20 +404,6 @@ class NamuMark(NamuMarkConstant):
         # 마지막 문단 패턴 뒤 추가
         parts.append(text[tmp:])
         return {"titles": titles, "parts": parts}
-
-    # 복잡한 리스트 -> 딕셔너리 형태로 정리
-    # ['일번', ['이번','삼번']] => {'0': '일번', '1': '이번', '1.1':'삼번'}
-    @classmethod
-    def unravel_list(cls, args):
-        res = {}
-        for (idx, elem) in enumerate(args):
-            if 'list' not in str(type(elem)):
-                res[str(idx)] = elem
-            else:
-                res_0 = cls.unravel_list(elem)
-                for (key, val) in res_0.items():
-                    res[f"{idx}.{key}"] = val
-        return res
 
     # 목차 찾기
     def get_toc(self):
@@ -1112,137 +1230,6 @@ class NamuMark(NamuMarkConstant):
         return text
 
 
-# 나무마크 상수 정의 함수
-class NamuMarkConstant:
-
-    # ul, ol 리스트용 태그
-    LIST_TAG = [
-            ['*', 'ul'],
-            ['1.', 'ol class="decimal"'],
-            ['A.', 'ol class="upper-alpha"'],
-            ['a.', 'ol class="lower-alpha"'],
-            ['I.', 'ol class="upper-roman"'],
-            ['i.', 'ol class="lower-roman"'],
-        ]
-    # 문단 제목용 태그
-    H_TAG = [
-            r'(^|\n)======#?\s?(.*)\s?#?======\s*(\n|$)',
-            r'(^|\n)=====#?\s?(.*)\s?#?=====\s*(\n|$)',
-            r'(^|\n)====#?\s?(.*)\s?#?====\s*(\n|$)',
-            r'(^|\n)===#?\s?(.*)\s?#?===\s*(\n|$)',
-            r'(^|\n)==#?\s?(.*)\s?#?==\s*(\n|$)',
-            r'(^|\n)=#?\s?(.*)\s?#?=\s*(\n|$)'
-        ]
-    # 숨김 문단 제목용 태그
-    H_TAG_HIDE = [
-        r'(^|\n)======#\s?(.*)\s?#======\s*(\n|$)',
-        r'(^|\n)=====#\s?(.*)\s?#=====\s*(\n|$)',
-        r'(^|\n)====#\s/(.*)\s?#====\s*(\n|$)',
-        r'(^|\n)===#\s?(.*)\s?#===\s*(\n|$)',
-        r'(^|\n)==#\s?(.*)\s?#==\s*(\n|$)',
-        r'(^|\n)=#\s?(.*)\s?#=\s*(\n|$)'
-    ]
-    # 여러줄 문법 태그
-    MULTI_BRACKET = {
-            "{{{": {
-                "open": "{{{",
-                "close": "}}}",
-                "processor": "render_processor"
-            },
-            "[": {
-                "open": "[",
-                "close": "]",
-                "processor": "macro_processor"
-            }
-        }
-    # 한줄 문법 태그
-    SINGLE_BRACKET = {
-            "=": {
-                "open": "=",
-                "close": "=",
-                "processor": "header_processor"
-            },
-            "{{{": {
-                "open": "{{{",
-                "close": "}}}",
-                "processor": "text_processor"
-            },
-            "[[": {
-                "open": "[[",
-                "close": "]]",
-                "processor": "link_processor"
-            },
-            "[": {
-                "open": "[",
-                "close": "]",
-                "processor": "macro_processor"
-            },
-            "~~": {
-                "open": "~~",
-                "close": "~~",
-                "processor": "text_processor"
-            },
-            "--": {
-                "open": "--",
-                "close": "--",
-                "processor": "text_processor"
-            },
-            "__": {
-                "open": "__",
-                "close": "__",
-                "processor": "text_processor"
-            },
-            "^^": {
-                "open": "^^",
-                "close": "^^",
-                "processor": "text_processor"
-            },
-            ",,": {
-                "open": ",,",
-                "close": ",,",
-                "processor": "text_processor"
-            }
-        }
-
-    # 나무마크에서 <, &기호를 문법 표시로 치환하기. 미디어위키에서 예상치 못한 태그 사용을 방지하기 위한 조치
-    @staticmethod
-    def pre_parser(text:str):
-        # <>태그 왼쪽 괄호 해제
-        text = re.sub(r"<(/?[a-zA-Z0-9]*?)>", r"&lt;\1>", text)
-        # &;태그 왼쪽 amp 치환
-        text = re.sub(r"&([#0-9A-Za-z]*?);", r"&amp;\1;", text)
-
-        return text
-
-    # 미디어위키에서 템플릿 안에 내용의 문자를 집어넣을 때 내용 치환
-    @staticmethod
-    def inner_template(text: str):
-        return text.replace('{|', '{{{!}}').replace('|}', '{{!}}}').replace('||', '{{!!}}').replace('|', '{{!}}')
-
-    # 다단 리스트 - 풀어써서 1단 리스트로 고치기 [[a,b,c],[d,[e,f]]]=> [a,b,c,d,e,f]
-    @classmethod
-    def simplify_array(cls, args):
-        res = []
-        for elem in args:
-            if "list" not in str(type(elem)):
-                res.append(elem)
-            else:
-                res.extend(cls.simplify_array(elem))
-        return res
-
-    # 복잡한 리스트 -> 딕셔너리 형태로 정리
-    # ['일번', ['이번','삼번']] => {'0': '일번', '1': '이번', '1.1':'삼번'}
-    @classmethod
-    def unravel_list(cls, args):
-        res = {}
-        for (idx, elem) in enumerate(args):
-            if 'list' not in str(type(elem)):
-                res[str(idx)] = elem
-            else:
-                res_0 = cls.unravel_list(elem)
-                for (key, val) in res_0.items():
-                    res[f"{idx}.{key}"] = val
-        return res
 
 
 
