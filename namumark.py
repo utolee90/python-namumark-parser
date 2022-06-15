@@ -44,67 +44,7 @@ class NamuMarkConstant:
         r'(^|\n)==#\s?(.*)\s?#==\s*(\n|$)',
         r'(^|\n)=#\s?(.*)\s?#=\s*(\n|$)'
     ]
-    # 여러줄 문법 태그
-    MULTI_BRACKET = {
-            "{{{": {
-                "open": "{{{",
-                "close": "}}}",
-                "processor": "render_processor"
-            },
-            "[": {
-                "open": "[",
-                "close": "]",
-                "processor": "macro_processor"
-            }
-        }
-    # 한줄 문법 태그
-    SINGLE_BRACKET = {
-            "=": {
-                "open": "=",
-                "close": "=",
-                "processor": "header_processor"
-            },
-            "{{{": {
-                "open": "{{{",
-                "close": "}}}",
-                "processor": "text_processor"
-            },
-            "[[": {
-                "open": "[[",
-                "close": "]]",
-                "processor": "link_processor"
-            },
-            "[": {
-                "open": "[",
-                "close": "]",
-                "processor": "macro_processor"
-            },
-            "~~": {
-                "open": "~~",
-                "close": "~~",
-                "processor": "text_processor"
-            },
-            "--": {
-                "open": "--",
-                "close": "--",
-                "processor": "text_processor"
-            },
-            "__": {
-                "open": "__",
-                "close": "__",
-                "processor": "text_processor"
-            },
-            "^^": {
-                "open": "^^",
-                "close": "^^",
-                "processor": "text_processor"
-            },
-            ",,": {
-                "open": ",,",
-                "close": ",,",
-                "processor": "text_processor"
-            }
-        }
+
 
     # 나무마크에서 <, &기호를 문법 표시로 치환하기. 미디어위키에서 예상치 못한 태그 사용을 방지하기 위한 조치
     @staticmethod
@@ -152,21 +92,19 @@ class NamuMark(NamuMarkConstant):
     # dict 형태 : {"title": (문서 제목), "text": (위키 문법)}
     def __init__(self, wiki_text: dict):
 
-        # 사용중인 매크로 - none, list, table, bq, etc...
-        self.macros = ""
+
         # 제목 숨김 여부 - 문단 숨김 여부 확인하기 위해 사용.
         self.hiding_header = False
         #  사용중인 매크로 텍스트
         self.macro_texts = []
-        # 사용중인 인라인 매크로
-        self.inline_macros = []
 
         # 위키 페이지 - TITLE / TEXT
         self.WIKI_PAGE = wiki_text
         # test 부분만
         self.WIKI_TEXT = wiki_text.get('text')
-        # 줄별로 나누어서 처리
-        self.WIKI_PAGE_LINES = self.WIKI_TEXT.split('\n')
+        # 줄 단위 나누기
+        self.WIKI_TEXT_LINES = self.WIKI_TEXT.split('\n')
+
         self.image_as_link = False
         self.wap_render = False
 
@@ -218,7 +156,31 @@ class NamuMark(NamuMarkConstant):
 
         return self.links
 
-    # 파싱하기
+    # 한줄 텍스트 패턴 분석 함수 - 앞에 있는 표시를 이용해서
+    def get_pattern(self, text: str):
+        # 헤더
+        if re.match(r"^={1,6}.*?={1,6}", text):
+            return 'header'
+        # 목록 형태
+        elif re.match(r"^\s{1,6}(\*|1\.|A\.|a\.|I\.|i\.)", text):
+            return 'list'
+        # 블록 인용문
+        elif re.match(r"^>", text):
+            return 'bq'
+        # 표
+        elif re.match(r"^\|", text):
+            return 'table'
+        # 주석
+        elif re.match(r"^##", text):
+            return 'comment'
+        # 가로선
+        elif text[0:4] == "----":
+            return 'hr'
+        # 아무것도 없을 때
+        else:
+            return 'none'
+
+    # 파싱하기 - mw_scan 함수 호출
     def parse_mw(self):
         if not self.WIKI_PAGE['title']:
             return ""
@@ -227,7 +189,7 @@ class NamuMark(NamuMarkConstant):
         return self.parsed
 
     # HTML 바꾸기
-    def to_mw(self, text: str):
+    def to_html(self, text: str):
         res = ""
 
         # 넘겨주기 형식 - 빈문서로 처리
@@ -236,15 +198,19 @@ class NamuMark(NamuMarkConstant):
 
         # 정의중입니다.
 
-    # 미디어위키 스캔
-    # def to_mw(self, text:str):
-    #     res = ""
-    #
-    #     # 넘겨주기 형식 - 빈문서로 처리
-    #     if re.fullmatch(r"#(?:redirect|넘겨주기) (.+)", text, flags=re.I):
-    #         return ""
-    #
-    #     # 정의중입니다.
+    # 매크로 맵 - 텍스트를 줄 단위로 나눈 뒤 [줄, 매크로, 매크로 종료여부] 파트로 출력
+    def macro_map(self, text:str):
+        # 한줄 -> [한줄, 매크로명, 매크로 분기점여부]
+        txt_lines = text.split('\n') # 글을 출력하기
+        res = []
+        for (idx, line) in enumerate(txt_lines):
+            # 가로선/헤더이거나 마지막 줄에서는 무조건 True
+            macro_cut = True if idx == len(txt_lines)-1 or self.get_pattern(line) in ['header', "hr"] \
+                else self.get_pattern(line) != self.get_pattern(txt_lines[idx+1])
+            res.append([line, self.get_pattern(line), macro_cut])
+
+        return res
+
 
     # 미디어위키 메인함수
     '''미디어위키 메인함수 - 텍스트 - 파싱하는 함수
@@ -262,67 +228,93 @@ class NamuMark(NamuMarkConstant):
         result = ""
         # 파서 하나 적용할 결과
         parser_result = ""
-        # 텍스트를 줄 단위로 나누기
-        strlines = text.split('\n')
-        # 파서
-        macros = 'none'
-        self.macros = macros
+        # 텍스트를 줄 단위로 나눈 뒤 매크로 맵을 산출
+        macros = self.macro_map(text)
 
-        # 넘겨주기 형식 - 빠르게 처리
+        # 넘겨주기 형식 - 간단하게 처리할 수 있음.
         if re.fullmatch(r"#(?:redirect|넘겨주기) (.+)", text, flags=re.I):
             target = re.fullmatch(r"#(?:redirect|넘겨주기) (.+)", text, flags=re.I)
             target_link = target.group(1).split('#')[0]  # # 기호 뒷부분은 넘겨주기한 문서 정보를 알 수 없으므로 무시한다.
             self.links = [{"target": target_link, "type": "redirect"}]
             return "#redirect [[{0}]]".format(target_link)
 
-        # 줄 단위로 패턴 검색후 파서 적용하기
-        idx = 0
-        while idx <= len(strlines):
-            cur_line = strlines[idx] if idx < len(strlines) else ''
+        # 개행기호 단위로 파싱한 후에 표시
+        line_idx = 0 #첫 줄
+        while line_idx < len(macros): # 마지막 줄까지 검색
+            cur_line = macros[line_idx][0]  # 현재 줄 표시
+            cur_macro = macros[line_idx][1] # 현재 줄 매크로 값
+            macro_cut = macros[line_idx][2]  # 매크로 분기 여부
 
-            if macros == self.get_pattern(cur_line):
-                # 한 줄 짜리이면 무조건...
-                if self.get_pattern(cur_line) == "hr":
-                    result += "<hr />\n"
-                    parser_result = cur_line + '\n'
-                elif self.get_pattern(cur_line) == "comment":
-                    cont = re.match("^##(.*)\n?", parser_result).group(1)
-                    result += f"<!--{cont}-->\n"
-                    parser_result = cur_line + '\n'
-                elif self.get_pattern(cur_line) == 'header':
+            if macro_cut:
+                parser_result += cur_line # 파서 결과 더하기
+                # 가로선 또는 주석 - misc_processor
+                if cur_macro == "hr" or cur_macro == "comment":
+                    result += self.misc_processor(parser_result)
+                # 문단 제목 - header_processor
+                elif cur_macro == "header":
                     result += self.header_processor(parser_result)
-                    parser_result = cur_line + '\n'
-                else:  # 여러줄 처리가 가능한 매크로 - parser_result  추가
-                    parser_result += cur_line + '\n'
-
-            # 매크로가 달라질 때
-            else:
-                if macros == 'list':
-                    # 리스트 파서 추가
+                # 목록 형태
+                elif cur_macro == "list":
                     result += self.list_parser(parser_result)
-                elif macros == 'bq':
-                    # 블록 파서 결과 추가
+                # 블록문
+                elif cur_macro == "bq":
                     result += self.bq_parser(parser_result)
-                elif macros == 'table':
-                    # 표 파서 결과 추가
+                # 표
+                elif cur_macro == "table":
                     result += self.convert_to_mw_table(parser_result)
-                elif macros == 'none':
-                    # 파서 결과 추가
-                    result += self.render_processor(parser_result, 'multi')
-                elif macros == 'hr':
-                    result += "<hr />\n"
-                elif macros == 'comment':
-                    cont = re.match("^##(.*)\n?", parser_result).group(1)
-                    result += f"<!--{cont}-->\n"
-                elif macros == 'header':
-                    result += self.header_processor(parser_result) + '\n'
+                # 나머지
+                else:
+                    result += self.render_processor(parser_result)
 
-                #
-                parser_result = cur_line + '\n'
-                macros = self.get_pattern(cur_line)
-                self.macros = macros
+                parser_result = "" # 파서 결과는 다시 비우기
 
-            idx += 1
+            else:
+                # 매크로 컷이 아니면 그냥 parser_result에 더하기
+                parser_result += cur_line+'\n'
+
+
+            # if macro == self.get_pattern(cur_line):
+            #     # 한 줄 짜리이면 무조건...
+            #     if self.get_pattern(cur_line) == "hr":
+            #         result += "<hr />\n"
+            #         parser_result = cur_line + '\n'
+            #     elif self.get_pattern(cur_line) == "comment":
+            #         cont = re.match("^##(.*)\n?", parser_result).group(1)
+            #         result += f"<!--{cont}-->\n"
+            #         parser_result = cur_line + '\n'
+            #     elif self.get_pattern(cur_line) == 'header':
+            #         result += self.header_processor(parser_result)
+            #         parser_result = cur_line + '\n'
+            #     else:  # 여러줄 처리가 가능한 매크로 - parser_result  추가
+            #         parser_result += cur_line + '\n'
+            #
+            # # 매크로가 달라질 때
+            # else:
+            #     if macro == 'list':
+            #         # 리스트 파서 추가
+            #         result += self.list_parser(parser_result)
+            #     elif macro == 'bq':
+            #         # 블록 파서 결과 추가
+            #         result += self.bq_parser(parser_result)
+            #     elif macro == 'table':
+            #         # 표 파서 결과 추가
+            #         result += self.convert_to_mw_table(parser_result)
+            #     elif macro == 'none':
+            #         # 파서 결과 추가
+            #         result += self.render_processor(parser_result, 'multi')
+            #     elif macro == 'hr':
+            #         result += "<hr />\n"
+            #     elif macro == 'comment':
+            #         cont = re.match("^##(.*)\n?", parser_result).group(1)
+            #         result += f"<!--{cont}-->\n"
+            #     elif macro == 'header':
+            #         result += self.header_processor(parser_result) + '\n'
+            #
+            #     #
+            #     parser_result = cur_line + '\n'
+            #     macro = self.get_pattern(cur_line)
+
+            line_idx += 1
 
         # 매크로가 none일 때
         if parser_result != "" and parser_result != "\n":
@@ -330,29 +322,6 @@ class NamuMark(NamuMarkConstant):
 
         return result
 
-    # 패턴 분석 함수 - 텍스트 통해서 패턴 분석
-    def get_pattern(self, text: str):
-        # 헤더
-        if re.match(r"^={1,6}.*?={1,6}", text):
-            return 'header'
-        # 목록 형태
-        elif re.match(r"^\s{1,6}(\*|1\.|A\.|a\.|I\.|i\.)", text):
-            return 'list'
-        # 블록 인용문
-        elif re.match(r"^>", text):
-            return 'bq'
-        # 표
-        elif re.match(r"^\|\|", text):
-            return 'table'
-        # 주석
-        elif re.match(r"^##", text):
-            return 'comment'
-        # 가로선
-        elif text[0:4] == "----":
-            return 'hr'
-        # 아무것도 없을 때
-        else:
-            return 'none'
 
     # 헤딩 구조로 문서 나누어 분석하기. structure
     def title_structure(self, text: str, title=""):
@@ -427,18 +396,37 @@ class NamuMark(NamuMarkConstant):
 
     # 헤드라인용 처리
     def header_processor(self, text: str):
-        # 숨김 패턴이 있는지 확인
+        # 우선 나무위키와 미디어위키의 헤딩 기호는 동일하므로 같은 결과 출력
         res = text
+
         # 이전 문단이 숨김 패턴이 있는지 확인
         if self.hiding_header == True:
             res = "{{숨김 끝}}\n" + res
             self.hiding_header = False  # 값 초기화
 
+        # 숨김 문단 패턴 기호가 있는지 확인
         if re.search(r'(=+#)\s?.*?\s?(#=+)', res):
             res = re.sub(r'(=+)#\s?(.*?)\s?#(=+)', r'\1 \2 \3\n{{숨김 시작}}', res)
             self.hiding_header = True
 
         return res
+
+    # 주석, 가로선 처리
+    # 패턴 : ---- 또는 ## 주석
+    def misc_processor(self, text:str):
+        # 가로선 처리
+        if re.match(r"^----",text ):
+            return "<hr/>\n"
+        # 주석 처리
+        elif re.match(r"^##", text):
+            res = "<!--"
+            text_split = text.split('\n')
+            for line in text_split:
+                line_part = re.match(r"^##(.*)", line).group(1)
+                res += line_part+'\n'
+            # 마지막 \n 기호는 지우고 주석 닫기 처리
+            res = res[:-1]+ '-->\n'
+            return res
 
     # 중괄호 여러줄 프로세싱. 기본적으로 문법 기호 포함.
     # 멀티라인일 때는 type = multi
@@ -902,7 +890,7 @@ class NamuMark(NamuMarkConstant):
             res['type'] = 'ul'
             res['preparsed'] = text[spacing + 1:]
         else:
-            for tg in self.list_tag[1:]:
+            for tg in self.LIST_TAG[1:]:
                 if text[spacing:spacing + 2] == tg[0]:
                     res['type'] = tg[1]
                     res['preparsed'] = text[spacing + 2:]
@@ -969,7 +957,7 @@ class NamuMark(NamuMarkConstant):
             conts = re.match(r"include\((.*)\)", text).group(1)
             conts_list = conts.split(',')  # 안의 내용 - 틀:틀이름,변수1=값1,변수2=값2,
             transcluding = conts_list[0].strip()  # 문서 목록
-            res = f"{{{{{transcluding}" if ":" in transcluding else f"{{{{{:transcluding}"
+            res = f"{{{{{transcluding}" if ":" in transcluding else f"{{{{:{transcluding}"
             # 내부에 변수 없을 때
             if len(conts_list) == 1:
                 return res + "}}"
