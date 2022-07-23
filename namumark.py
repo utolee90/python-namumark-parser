@@ -28,23 +28,13 @@ class NamuMarkConstant:
         ]
     # 문단 제목용 태그
     H_TAG = [
-            r'(^|\n)======#?\s?(.*)\s?#?======\s*(\n|$)',
-            r'(^|\n)=====#?\s?(.*)\s?#?=====\s*(\n|$)',
-            r'(^|\n)====#?\s?(.*)\s?#?====\s*(\n|$)',
-            r'(^|\n)===#?\s?(.*)\s?#?===\s*(\n|$)',
-            r'(^|\n)==#?\s?(.*)\s?#?==\s*(\n|$)',
-            r'(^|\n)=#?\s?(.*)\s?#?=\s*(\n|$)'
+            r'(^|\n)======([^=].*)======\s*(\n|$)',
+            r'(^|\n)=====([^=].*)=====\s*(\n|$)',
+            r'(^|\n)====([^=].*)====\s*(\n|$)',
+            r'(^|\n)===([^=].*)===\s*(\n|$)',
+            r'(^|\n)==([^=].*)==\s*(\n|$)',
+            r'(^|\n)=([^=].*)=\s*(\n|$)'
         ]
-    # 숨김 문단 제목용 태그
-    H_TAG_HIDE = [
-        r'(^|\n)======#\s?(.*)\s?#======\s*(\n|$)',
-        r'(^|\n)=====#\s?(.*)\s?#=====\s*(\n|$)',
-        r'(^|\n)====#\s/(.*)\s?#====\s*(\n|$)',
-        r'(^|\n)===#\s?(.*)\s?#===\s*(\n|$)',
-        r'(^|\n)==#\s?(.*)\s?#==\s*(\n|$)',
-        r'(^|\n)=#\s?(.*)\s?#=\s*(\n|$)'
-    ]
-
 
     # 나무마크에서 <, &기호를 문법 표시로 치환하기. 미디어위키에서 예상치 못한 태그 사용을 방지하기 위한 조치
     @staticmethod
@@ -123,6 +113,9 @@ class NamuMark(NamuMarkConstant):
         self.included = False
         self.title_list = []
 
+        # render_stack
+        self.render_stack=[]
+
         # 결과물 - HTML, mw
         self.parsed = ""
         self.mw = ""
@@ -152,7 +145,7 @@ class NamuMark(NamuMarkConstant):
             return []
         if len(self.links) == 0:
             self.parsed = self.pre_parser(self.WIKI_PAGE['text'])
-            self.parsed = self.mw_scan(self.parsed)
+            self.parsed = self.to_mw(self.parsed)
 
         return self.links
 
@@ -185,7 +178,7 @@ class NamuMark(NamuMarkConstant):
         if not self.WIKI_PAGE['title']:
             return ""
         # self.parsed = self.pre_parser(self.WIKI_PAGE['text'])
-        self.parsed = self.mw_scan(self.WIKI_PAGE['text'])
+        self.parsed = self.to_mw(self.WIKI_PAGE['text'])
         return self.parsed
 
     # HTML 바꾸기
@@ -203,11 +196,25 @@ class NamuMark(NamuMarkConstant):
         # 한줄 -> [한줄, 매크로명, 매크로 분기점여부]
         txt_lines = text.split('\n') # 글을 출력하기
         res = []
+        table_open = False # 열린 표가 있는지 확인
         for (idx, line) in enumerate(txt_lines):
-            # 가로선/헤더이거나 마지막 줄에서는 무조건 True
-            macro_cut = True if idx == len(txt_lines)-1 or self.get_pattern(line) in ['header', "hr"] \
-                else self.get_pattern(line) != self.get_pattern(txt_lines[idx+1])
-            res.append([line, self.get_pattern(line), macro_cut])
+            # 테이블이 열렸는지 확인해보자
+            if self.get_pattern(line) == 'table' and line.strip()[-2:] != "||":
+                table_open = True
+
+            if table_open: # 테이블이 열려있으면 패턴은 무조건 테이블로. 계속 검색
+                res.append([line, 'table', False])
+            else:
+                # 가로선/헤더이거나 마지막 줄에서는 무조건 True
+                macro_cut = True if idx == len(txt_lines)-1 or self.get_pattern(line) in ['header', "hr"] \
+                    else self.get_pattern(line) != self.get_pattern(txt_lines[idx+1])
+                res.append([line, self.get_pattern(line), macro_cut])
+
+            # table_open이 닫히는 조건 - 마지막 줄이 ||로 끝난다. 그러면 res
+            if table_open and (line.strip()[-2:] == "||" or idx == len(txt_lines)-1):
+                table_open = False
+                # 마지막으로 추가한 res의 분기점여부도 변경
+                res[-1][2] = len(txt_lines)-1 == idx or self.get_pattern(line) != self.get_pattern(txt_lines[idx+1])
 
         return res
 
@@ -223,7 +230,7 @@ class NamuMark(NamuMarkConstant):
     3.1. 패턴이 동일할 경우 pattern_result 변수에 내용 추가
     3.2. 다음 줄의 패턴이 달라질 경우 patter_result 결과를 정의한 후 pattern에 따른 프로세서를 이용해서 파싱된 내용 추가
     '''
-    def mw_scan(self, text: str):
+    def to_mw(self, text: str):
         # 결과
         result = ""
         # 파서 하나 적용할 결과
@@ -272,48 +279,6 @@ class NamuMark(NamuMarkConstant):
                 # 매크로 컷이 아니면 그냥 parser_result에 더하기
                 parser_result += cur_line+'\n'
 
-
-            # if macro == self.get_pattern(cur_line):
-            #     # 한 줄 짜리이면 무조건...
-            #     if self.get_pattern(cur_line) == "hr":
-            #         result += "<hr />\n"
-            #         parser_result = cur_line + '\n'
-            #     elif self.get_pattern(cur_line) == "comment":
-            #         cont = re.match("^##(.*)\n?", parser_result).group(1)
-            #         result += f"<!--{cont}-->\n"
-            #         parser_result = cur_line + '\n'
-            #     elif self.get_pattern(cur_line) == 'header':
-            #         result += self.header_processor(parser_result)
-            #         parser_result = cur_line + '\n'
-            #     else:  # 여러줄 처리가 가능한 매크로 - parser_result  추가
-            #         parser_result += cur_line + '\n'
-            #
-            # # 매크로가 달라질 때
-            # else:
-            #     if macro == 'list':
-            #         # 리스트 파서 추가
-            #         result += self.list_parser(parser_result)
-            #     elif macro == 'bq':
-            #         # 블록 파서 결과 추가
-            #         result += self.bq_parser(parser_result)
-            #     elif macro == 'table':
-            #         # 표 파서 결과 추가
-            #         result += self.convert_to_mw_table(parser_result)
-            #     elif macro == 'none':
-            #         # 파서 결과 추가
-            #         result += self.render_processor(parser_result, 'multi')
-            #     elif macro == 'hr':
-            #         result += "<hr />\n"
-            #     elif macro == 'comment':
-            #         cont = re.match("^##(.*)\n?", parser_result).group(1)
-            #         result += f"<!--{cont}-->\n"
-            #     elif macro == 'header':
-            #         result += self.header_processor(parser_result) + '\n'
-            #
-            #     #
-            #     parser_result = cur_line + '\n'
-            #     macro = self.get_pattern(cur_line)
-
             line_idx += 1
 
         # 매크로가 none일 때
@@ -336,8 +301,7 @@ class NamuMark(NamuMarkConstant):
                 # 마지막 단계에서도 파트가 없음 - 결과 출력
                 if idx == 6:
                     return {"titles": titles, "parts": parts}
-                else:
-                    continue
+
             # idx 단계의 파트가 있을 때 그 단계에서 쪼개고 마무리
             else:
                 titles.extend(res_part['titles'][1:])
@@ -368,7 +332,7 @@ class NamuMark(NamuMarkConstant):
             starting = pat.start()  # 시작 위치. 개행기호 \n  위치
             ending = pat.end() - 1 if pat.end() < len(text) else pat.end()  # 끝 위치. 개행기호 \n 위치 혹은 마지막.
             titles.append(pat.group(0).replace('\n', ''))  # 개행기호는 제외
-            parts.append(text[tmp + 1:starting])  # 문단기호 앞 개행기호까지 포함
+            parts.append(text[tmp + 1:starting+1] if starting>0 else "")  # 문단기호 앞 개행기호까지 포함
             tmp = ending  # 문단기호 뒤 개행기호 위치로 지정
         # 마지막 문단 패턴 뒤 추가
         parts.append(text[tmp:])
@@ -479,9 +443,9 @@ class NamuMark(NamuMarkConstant):
                             text_remain = text_remain[:tmppos]
 
                         if is_inline:
-                            res += f"<span {text_head}>{self.mw_scan(self.pre_parser(text_remain))}</span>"
+                            res += f"<span {text_head}>{self.to_mw(self.pre_parser(text_remain))}</span>"
                         else:
-                            res += f"<div {text_head}>\n{self.mw_scan(self.pre_parser(text_remain))}\n</div>"
+                            res += f"<div {text_head}>\n{self.to_mw(self.pre_parser(text_remain))}\n</div>"
                         temp_preparsed = ""
 
                     # folding -> 숨김 시작 틀 사용
@@ -504,14 +468,14 @@ class NamuMark(NamuMarkConstant):
 
                         r += 16 + len(text_remain) if tmppos >= 0 else 13 + len(text_remain)
 
-                        res += f"{{{{숨김 시작|title={self.inner_template(text_head)}}}}}\n{self.mw_scan(self.pre_parser(text_remain))}\n{{{{숨김 끝}}}}"
+                        res += f"{{{{숨김 시작|title={self.inner_template(text_head)}}}}}\n{self.to_mw(self.pre_parser(text_remain))}\n{{{{숨김 끝}}}}"
                         temp_preparsed = ""
 
                     # syntax/source -> syntaxhighlight
                     elif text[0:12].lower() in ["{{{#!syntax ", "{{{#!source "]:
                         # 우선 앞에서 저장된 temp_preparsed 내용은 파싱한다.
                         res += self.render_processor(temp_preparsed) if temp_preparsed != "" else ""
-                        parsed = re.match(r"\{\{\{#!(syntax|source) (.*?)}}}", text[r:], re.MULTILINE).group(1)
+                        parsed = re.match(r"{{{#!(syntax|source) (.*?)}}}", text[r:], re.MULTILINE).group(1)
                         r += 15 + len(parsed)
                         text_head = parsed.split('\n')[0]
                         text_head_len = len(text_head) + 1
@@ -520,11 +484,11 @@ class NamuMark(NamuMarkConstant):
                         temp_preparsed = ""
 
                     # 색깔 표현
-                    elif letter == "{" and re.match(r"^\{\{\{#(.*?) (.*?)", text[r:], re.MULTILINE):
+                    elif letter == "{" and re.match(r"^{{{#(.*?) (.*?)", text[r:], re.MULTILINE):
                         # 우선 앞에서 저장된 temp_preparsed 내용은 파싱한다.
                         res += self.render_processor(temp_preparsed) if temp_preparsed != "" else ""
-                        color = re.match(r"\{\{\{#(.*?) (.*)", text[r:], re.MULTILINE).group(1)
-                        pre_parsed = re.match(r"\{\{\{#(.*?) (.*)", text[r:], re.MULTILINE).group(2)
+                        color = re.match(r"{{{#(.*?) (.*)", text[r:], re.MULTILINE).group(1)
+                        pre_parsed = re.match(r"{{{#(.*?) (.*)", text[r:], re.MULTILINE).group(2)
                         # pre_parsed에서 {{{ 기호와 }}} 기호 갯수를 센다.
                         pre_parsed_open_count = pre_parsed.count("{{{")
                         tmppos = 0
@@ -551,12 +515,12 @@ class NamuMark(NamuMarkConstant):
                         temp_preparsed = ""
 
                     # 글씨 키우기/줄이기
-                    elif letter == "{" and re.match(r"\{\{\{(\+|\-)([1-5]) (.*)", text[r:]):
+                    elif letter == "{" and re.match(r"{{{[+\-]([1-5]) (.*)", text[r:]):
                         # 우선 앞에서 저장된 temp_preparsed 내용은 파싱한다.
                         res += self.render_processor(temp_preparsed) if temp_preparsed != "" else ""
-                        sizer = re.match(r"\{\{\{(\+|\-)([1-5]) (.*)", text[r:], re.MULTILINE).group(1)
-                        num = int(re.match(r"\{\{\{(\+|\-)([1-5]) (.*)", text[r:], re.MULTILINE).group(2))
-                        pre_parsed = re.match(r"\{\{\{(\+|\-)([1-5]) (.*)", text[r:], re.MULTILINE).group(3)
+                        sizer = re.match(r"{{{[+\-]([1-5]) (.*)", text[r:], re.MULTILINE).group(1)
+                        num = int(re.match(r"{{{[+\-]([1-5]) (.*)", text[r:], re.MULTILINE).group(2))
+                        pre_parsed = re.match(r"{{{[+\-]([1-5]) (.*)", text[r:], re.MULTILINE).group(3)
                         # pre_parsed에서 {{{ 기호와 }}} 기호 갯수를 센다.
                         pre_parsed_open_count = pre_parsed.count("{{{")
                         tmppos = 0
@@ -579,7 +543,7 @@ class NamuMark(NamuMarkConstant):
 
                     # # #color,#color 패턴 -> 라이트/다크모드.
                     # # 리브레 위키에서는 mw.loader.load('//librewiki.net/index.php?title=사용자:Utolee90/liberty.js&action=raw&ctype=text/javascript') 삽입시에만 유효
-                    # elif re.match(r"\{\{\{(#[0-9A-Za-z]+,#[0-9A-Za-z] )", text):
+                    # elif re.match(r"{{{(#[0-9A-Za-z]+,#[0-9A-Za-z] )", text):
                     #     colors = re.match('\{\{\{(#[0-9A-Za-z]+),(#[0-9A-Za-z]+) ', text)
                     #     text_head = colors.group(0)
                     #     text_remain = text[len(text_head):]
@@ -644,15 +608,15 @@ class NamuMark(NamuMarkConstant):
                 if letter in parsing_symbol:
 
                     # 문법 무시
-                    if letter == "{" and re.match(r"^\{\{\{([^#].*?)}}}", text[r:]):
-                        parsed = re.match(r"\{\{\{([^#].*?)}}}", text[r:]).group(1)
+                    if letter == "{" and re.match(r"^{{{([^#].*?)}}}", text[r:]):
+                        parsed = re.match(r"{{{([^#].*?)}}}", text[r:]).group(1)
                         r += 6 + len(parsed)
                         res += f"<nowiki>{parsed}</nowiki>"
 
                     # 색깔 표현
-                    elif letter == "{" and re.match(r"^\{\{\{#(.*?) (.*?)", text[r:]):
-                        color = re.match(r"\{\{\{#(.*?) (.*)", text[r:]).group(1)
-                        pre_parsed = re.match(r"\{\{\{#(.*?) (.*)", text[r:]).group(2)
+                    elif letter == "{" and re.match(r"^{{{#(.*?) (.*?)", text[r:]):
+                        color = re.match(r"{{{#(.*?) (.*)", text[r:]).group(1)
+                        pre_parsed = re.match(r"{{{#(.*?) (.*)", text[r:]).group(2)
                         # pre_parsed에서 {{{ 기호와 }}} 기호 갯수를 센다.
                         pre_parsed_open_count = pre_parsed.count("{{{")
                         tmppos = 0
@@ -678,10 +642,10 @@ class NamuMark(NamuMarkConstant):
                             res += f"<nowiki>#{color} {parsed}</nowiki>"
 
                     # 글씨 키우기/줄이기
-                    elif letter == "{" and re.match(r"\{\{\{(\+|\-)([1-5]) (.*)", text[r:]):
-                        sizer = re.match(r"\{\{\{(\+|\-)([1-5]) (.*)", text[r:]).group(1)
-                        num = int(re.match(r"\{\{\{(\+|\-)([1-5]) (.*)", text[r:]).group(2))
-                        pre_parsed = re.match(r"\{\{\{(\+|\-)([1-5]) (.*)", text[r:]).group(3)
+                    elif letter == "{" and re.match(r"{{{[+\-]([1-5]) (.*)", text[r:]):
+                        sizer = re.match(r"{{{[+\-]([1-5]) (.*)", text[r:]).group(1)
+                        num = int(re.match(r"{{{[+\-]([1-5]) (.*)", text[r:]).group(2))
+                        pre_parsed = re.match(r"{{{[+\-]([1-5]) (.*)", text[r:]).group(3)
                         # pre_parsed에서 {{{ 기호와 }}} 기호 갯수를 센다.
                         pre_parsed_open_count = pre_parsed.count("{{{")
                         tmppos = 0
@@ -709,7 +673,7 @@ class NamuMark(NamuMarkConstant):
                         if refname == "":
                             res += f"<ref>{self.render_processor(self.pre_parser(refcont))}</ref>"
                         else:
-                            res + + f"<ref name=\"{refname}\">{self.render_processor(self.pre_parser(refcont))}</ref>"
+                            res += f"<ref name=\"{refname}\">{self.render_processor(self.pre_parser(refcont))}</ref>"
 
                     # 링크 처리 - 외부링크, 내부링크 공통처리
                     elif letter == "[" and re.match(r"\[\[(.*?)]]", text[r:]):
@@ -723,7 +687,7 @@ class NamuMark(NamuMarkConstant):
 
                     # 매크로
                     elif letter == "[" and re.match(r"\[([^\[*].*?)]", text[r:]):
-                        cont = re.match(r"\[(.*?)\]", text[r:]).group(1)
+                        cont = re.match(r"\[(.*?)]", text[r:]).group(1)
                         r += 2 + len(cont)
                         res += self.simple_macro_processor(cont)
 
@@ -753,7 +717,7 @@ class NamuMark(NamuMarkConstant):
 
                     # 아래첨자
                     elif letter == "," and re.match(r",,(.*?),,", text[r:]):
-                        cont = re.match(r",,(.*?)^^", text[r:]).group(1)
+                        cont = re.match(r",,(.*?),,", text[r:]).group(1)
                         r += 4 + len(cont)
                         res += f"<sub>{self.render_processor(self.pre_parser(cont))}</sub>"
 
@@ -941,9 +905,9 @@ class NamuMark(NamuMarkConstant):
 
         # 루비 문자 매크로
         elif re.match(r"ruby\((.*)\)", text):
-            cont = re.match(r"ruby\((.*?)(,ruby=.*?)?(,color=.*?)?\)").group(1)
-            ruby_part = re.match(r"ruby\((.*?)(,ruby=.*?)?(,color=.*?)?\)").group(2)
-            color_part = re.match(r"ruby\((.*?)(,ruby=.*?)?(,color=.*?)?\)").group(3)
+            cont = re.match(r"ruby\((.*?)(,ruby=.*?)?(,color=.*?)?\)", text).group(1)
+            ruby_part = re.match(r"ruby\((.*?)(,ruby=.*?)?(,color=.*?)?\)", text).group(2)
+            color_part = re.match(r"ruby\((.*?)(,ruby=.*?)?(,color=.*?)?\)", text).group(3)
             if ruby_part != "":
                 ruby = ruby_part[6:]
                 if color_part != "":
@@ -976,9 +940,9 @@ class NamuMark(NamuMarkConstant):
         if re.match(r"https?://(.*)", link):
             return f"{link}" if text == "" else f"[{link} {self.render_processor(text, '')}]"
         # 문단기호 링크에 대비
-        elif re.match(r"$(.*?)#s\-(.*)", link):
-            article = re.match(r"$(.*?)#s\-(.*)", link).group(1)
-            paragraph = re.match(r"$(.*?)#s\-(.*)", link).group(2)
+        elif re.match(r"$(.*?)#s-(.*)", link):
+            article = re.match(r"$(.*?)#s-(.*)", link).group(1)
+            paragraph = re.match(r"$(.*?)#s-(.*)", link).group(2)
             paragraph_list = paragraph.split(".")
             paragraph_name = self.find_paragraph_by_index(paragraph_list)
             return f"[[{article}#{paragraph_name}]]" if text == "" else f"[[{article}#{paragraph_name}|{self.render_processor(text, '')}]]"
@@ -1049,174 +1013,176 @@ class NamuMark(NamuMarkConstant):
         print('function_end')
         return open_tag+'\n'+res+'\n'+close_tag
 
+    # 표 매크로 함수
+    # 각 셀에서 매크로 유도하는 함수
+    # res, row_css, table_css, row_merginc_cell값 반환
+    def table_macro(self, cell_text:str, row_merging_cell:int):
+        cell_css = {'background-color': '', 'color': '', 'width': '', 'height': '', 'text-align': '', 'vertical-align': ''}
+        row_css = {'background-color': '', 'color': '', 'height': ''}
+        table_css = {'background-color': '', 'color': '', 'width': '', 'border-color': ''}
+        # 파이프 문자 4개 사이의 텍스트일 때 -> 가로선
+        if cell_text == "":
+            return {"res": "", "row_css": row_css, "table_css": table_css, "row_merging_cell": row_merging_cell+1}
+
+        macro_pattern = re.match(r"(<[^>\n]+>)+(.*)", cell_text)
+        res = '\n|'
+
+        if macro_pattern:
+            macro_iteration = re.finditer(r"<([^>\n]+)>", macro_pattern.group(1))
+            # 우선 colspan부터 파악
+            if row_merging_cell>0:
+                row_macro = re.search(r"<-([0-9]+)>", macro_pattern.group(1))
+                row_macro_num = int(row_macro.group(1))
+                res += ' colspan="{}"'.format(row_macro_num+row_merging_cell)
+
+            # 매크로 패턴 파악
+            for iter_pattern in macro_iteration:
+                pattern_text = iter_pattern.group(1)
+                # 가로줄 파악
+                if row_merging_cell == 0 and re.match(r"-([0-9]+)", pattern_text):
+                    rmerge = int(re.match(r"-([0-9]+)", pattern_text).group(1))
+                    res += ' colspan="{}"'.format(rmerge) if rmerge>1 else ''
+                # 세로줄/ 세로 정렬 파악
+                elif re.match(r"[\^v]?\|([0-9]+)", pattern_text):
+                    valign = re.match(r"([\^v])?\|([0-9]+)", pattern_text).group(1)
+                    vmerge = int(re.match(r"([\^v])?\|([0-9]+)", pattern_text).group(2))
+                    valign_obj = {'^': 'top', 'v': 'bottom'}
+                    cell_css['vertical-align'] = valign_obj[valign] if valign != "" else ""
+                    res += ' rowspan="{}"'.format(vmerge) if vmerge>1 else ''
+                # 셀 가로정렬
+                elif pattern_text in ["(", ":", ")"]:
+                    talign_obj = {'(': 'left', ':': 'center', ')': 'right'}
+                    cell_css['text-align'] = talign_obj[pattern_text]
+                # 셀 너비
+                elif re.match(r"width=(.+)", pattern_text):
+                    width = re.match(r"width=(.+)", pattern_text).group(1)
+                    cell_css['width'] = width
+                # 셀 높이
+                elif re.match(r"height=(.*)", pattern_text):
+                    height = re.match(r"height=(.*)", pattern_text).group(1)
+                    cell_css['height'] = height
+                # 배경색
+                elif re.match(r"bgcolor=(.*)", pattern_text):
+                    bgcolor = re.match(r"bgcolor=(.*)", pattern_text).group(1)
+                    cell_css['background-color'] = bgcolor
+                # 글자색
+                elif re.match(r"color=(.*)", pattern_text).group(1):
+                    color = re.match(r"color=(.*)", pattern_text).group(1)
+                    cell_css['color'] = color
+                # 줄 배경색
+                elif re.match(r"rowbgcolor=(.*)", pattern_text).group(1):
+                    rowbgcolor = re.match(r"rowbgcolor=(.*)", pattern_text).group(1)
+                    row_css['background-color'] = rowbgcolor
+                # 줄 글자색
+                elif re.match(r"rowcolor=(.*)", pattern_text).group(1):
+                    rowcolor = re.match(r"rowcolor=(.*)", pattern_text).group(1)
+                    row_css['color'] = rowcolor
+                # 줄 높이
+                elif re.match(r"rowheight=(.*)", pattern_text).group(1):
+                    rowheight = re.match(r"rowheight=(.*)", pattern_text).group(1)
+                    row_css['height'] = rowheight
+                # 테이블 배경색
+                elif re.match(r"table\s?bgcolor=(.*)", pattern_text).group(1):
+                    tbgcolor = re.match(r"table\s?bgcolor=(.*)", pattern_text).group(1)
+                    table_css['background-color'] = tbgcolor
+                # 테이블 글자색
+                elif re.match(r"table\s?color=(.*)", pattern_text).group(1):
+                    tcolor = re.match(r"table\s?color=(.*)", pattern_text).group(1)
+                    table_css['color'] = tcolor
+                # 테이블 너비
+                elif re.match(r"table\s?width=(.*)", pattern_text).group(1):
+                    twidth = re.match(r"table\s?width=(.*)", pattern_text).group(1)
+                    table_css['width'] = twidth
+                # 테이블 테두리색
+                elif re.match(r"table\s?bordercolor=(.*)", pattern_text).group(1):
+                    tbdcolor = re.match(r"table\s?bordercolor=(.*)", pattern_text).group(1)
+                    table_css['border-color'] = tbdcolor
+
+            style_text = ''
+            for key in cell_css:
+                if cell_css[key] != "":
+                    style_text += '{}:{};'.format(key, cell_css[key])
+            style_text = 'style="{}"'.format(style_text) if style_text != "" else ""
+            res = res+ style_text+"|" if len(res) > 2 or style_text != "" else "\n|"
+
+            remain_pattern = re.match(r"(<[^>\n]+>)+(.*)", cell_text).group(2)
+            res += self.to_mw(self.pre_parser(remain_pattern))
+
+        else:
+            if row_merging_cell > 0:
+                res += ' rowspan="{}"|'.format(row_merging_cell)
+
+            res += self.to_mw(self.pre_parser(cell_text))
+
+
+        return {"res": res, "row_css":row_css, "table_css": table_css, "row_merging_cell": 0}
+
+
+
     # 표 파싱 함수
     # 인자: text -> 나무마크 문서 데이터 중 표 부분만 따온 부분 텍스트(주의: 전체 문서 텍스트를 넣지 말 것!)
     # TODO: 정규표현식 최적화, 셀 내부 꾸미기 기능 구현
     def convert_to_mw_table(self, text: str):
-        # [br] -> <br/>로 바꾸기
-        while re.search(r"\[br\]", text) and re.search(r"\[br\]", text).start() != -1:
-            matchstart = re.search(r"\[br\]", text).start()
-            matchend = re.search(r"\[br\]", text).end()
-            text = text[0:matchstart] + "<br/>" + text[matchend:]
-        # 엔터키 개행은 \n 문자를 하나 더 추가
-        regex_2 = re.compile(r"([^\n\|]+)\n([^\n\|]+)")
-        if regex_2.search(text):
-            substrings = regex_2.search(text).groups()
-            first = regex_2.search(text).start()
-            lastend = regex_2.search(text).end()
-            lastword = text[lastend + 1:]
-            text = text[0:first]
-            for substring in substrings:
-                text = text + substring + "\n\n"
-            text = text + lastword
         print(text)
         print("----------")
-        # 셀 병합 및 '{| class="wikitable", '|+' |', '|-', '|}'등의 기호로 변형 : 최종 작업 단계
-        result = "{| class=\"wikitable\" "
-        rowmergingcell = 0
-        RowMergingCellNum = 0
-        Firstchar = True
-        while (re.match(r"\|", text)):
-            if (re.match(r"\|([^\|\n]+)\|", text)):
-                result += "\n|+ " + text[re.match(r"\|([^\|\n]+)\|", text).start() + 1:re.match(r"\|([^\|\n]+)\|",
-                                                                                                text).end() - 1]
-                text = "||" + text[re.match(r"\|([^\|\n]+)\|", text).end():]
-            elif (re.match(r"\|\|([\|]+)(\<\|[0-9]+\>)?([^\n]+)(\|\|\n)?",
-                           text)):  # 여러 개의 | 문자로 가로 병합하는 경우 또는 세로 병합을 위한 더미 셀 추가
-                if RowMergingCellNum > 0:  # 더미 셀이 필요함
-                    for i in range(0, RowMergingCellNum):
-                        result += "\n| style=\"display:none\" | "
-                    RowMergingCellNum = 0
-                elif re.search(r"\|\|([\|]+)\<\|[0-9]+\>([^\|]+)", text):  # 가로 -> 세로 병합
-                    rowmergingcell = (re.match(r"\|\|([\|]+)", text).end() - re.match(r"\|\|([\|]+)",
-                                                                                      text).start()) // 2
-                    result += "\n| colspan=\"" + str(rowmergingcell) + "\" rowspan=\"" + text[re.search(r"\<\|[0-9]+\>",
-                                                                                                        text).start() + 2:re.search(
-                        r"\<\|[0-9]+\>", text).end() - 1] + "\" | "
-                    result += text[
-                              re.search(r"<\|([0-9]+)\>", text).end():re.search(r"<\|([0-9]+)\>([^\|]+)", text).end()]
-                    rowmergingcell = 0
-                else:  # 가로 병합
-                    rowmergingcell = (re.match(r"\|\|([\|]+)", text).end() - re.match(r"\|\|([\|]+)",
-                                                                                      text).start()) // 2
-                    result += "\n| colspan=\"" + str(rowmergingcell) + "\" | "
-                    rowmergingcell = 0
-                    result += text[re.match(r"\|\|([\|]+)", text).end():re.match(r"\|\|([\|]+)([^\|\n]+)", text).end()]
-                text = text[re.match(r"\|\|([\|]+)(\<\|[0-9]+\>)*([^\|\n]+)", text).end():]
-                if (text == ""):
-                    result += "\n|}"
-            elif re.match(r"\|\|([\|]+)\n", text):  # 가로 병합 때 버려질 셀들을 처리
-                rowmergingcell = (re.match(r"\|\|([\|]+)", text).end() - re.match(r"\|\|([\|]+)", text).start()) // 2
-                for i in range(0, rowmergingcell + 1):
-                    if i == 0:
-                        result += "\n| style=\"display:none\" | "
-                rowmergingcell = 0
-                result += "\n|-"
-                text = text[re.match(r"\|\|([\|])+\n", text).end():]
-                if (text == ""):
-                    result += "\n|}"
-            elif re.match(r"\|\|\<\|[0-9]+\>(\<\-[0-9]+\>|\|\|([\|]*))", text):
-                # col - row merge
-                if Firstchar:
-                    result += "\n| "
-                    Firstchar = False
-                else:
-                    result += "|| "
-                # now put in the spanning part
-                result += "rowspan=\"" + text[
-                                         re.search(r"\<\|([0-9]+)\>", text).start() + 2:re.search(r"\<\|([0-9]+)\>",
-                                                                                                  text).end() - 1] + "\" "
-                if re.search(r"\|\|([\|]+)", text[2:]):
-                    rowmergingcell += (re.match(r"\|\|([\|]+)", text[2:]).end() - re.match(r"\|\|([\|]+)",
-                                                                                           text[2:]).start()) // 2
-                    result += "colspan=\"" + str(rowmergingcell) + "\" | "
-                    RowMergingCellNum += rowmergingcell
-                    rowmergingcell = 0
-                else:
-                    result += "colspan=\"" + text[
-                                             re.search(r"\<\-[0-9]+\>", text).start() + 2:re.search(r"\<\-[0-9]+\>",
-                                                                                                    text).end() - 1] + "\" | "
-                # put in the context
-                result += text[re.search(r"\<\-[0-9]+\>", text).end():re.search(r"\<\-[0-9]+\>[^\|]+",
-                                                                                text).end()] + " |" + text[re.search(
-                    r"\<\-[0-9]+\>", text).end():re.search(r"\<\-[0-9]+\>[^\|]+", text).end()] + " |"
-                text = text[re.search(r"\<\-[0-9]+\>[^\|]+", text).end():]
-            elif re.match(r"\|\|(<\-[0-9]+\>|[\|]+)\<\|[0-9]+\>", text):
-                # row - col merge
-                if Firstchar:
-                    result += "\n| "
-                    Firstchar = False
-                else:
-                    result += "|| "
-                # now put in the spanning part
-                if re.search(r"\|\|([\|]+)", text):
-                    rowmergingcell += (re.match(r"\|\|([\|]+)", text).end() - re.match(r"\|\|([\|]+)",
-                                                                                       text).start()) // 2
-                    result += "colspan=\"" + str(rowmergingcell) + "\" "
-                    rowmergingcell = 0
-                else:
-                    result += "colspan=\"" + text[
-                                             re.search(r"\<\-([0-9]+)\>", text).start() + 2:re.search(r"\<\-([0-9]+)\>",
-                                                                                                      text).end() - 1] + "\" "
-                # put in the context with row spanning part
-                result += "rowspan=\"" + text[re.search(r"\<\|[0-9]+\>", text).start() + 2:re.search(r"\<\|[0-9]+\>",
-                                                                                                     text).end() - 1] + "\" | " + text[
-                                                                                                                                  re.search(
-                                                                                                                                      r"\<\|[0-9]+\>",
-                                                                                                                                      text).end():re.search(
-                                                                                                                                      r"\<\|[0-9]+\>[^\|]+",
-                                                                                                                                      text).end()]
-                text = text[re.search(r"\<\|[0-9]+\>[^\|]+", text).end():]
-            elif re.match(r"\|\|\<\|[0-9]+\>", text):  # 세로 병합 기호 단독
-                if Firstchar:
-                    result += "\n| "
-                    Firstchar = False
-                else:
-                    result += "|| "
-                result += "rowspan=\"" + text[
-                                         re.match(r"\|\|\<\|[0-9]+\>", text).start() + 4:re.match(r"\|\|\<\|[0-9]+\>",
-                                                                                                  text).end() - 1] + "\" | " + text[
-                                                                                                                               re.match(
-                                                                                                                                   r"\|\|\<\|[0-9]+\>",
-                                                                                                                                   text).end():re.match(
-                                                                                                                                   r"\|\|\<\|[0-9]+\>[^\|]+",
-                                                                                                                                   text).end()]
-                text = text[re.match(r"\|\|\<\|[0-9]+\>([^\|]+)", text).end():]
-            elif re.match(r"\|\|\<\-[0-9]+\>", text):  # 가로 병합 기호 단독
-                if Firstchar:
-                    result += "\n| "
-                    Firstchar = False
-                else:
-                    result += "|| "
-                result += "colspan=\"" + text[
-                                         re.match(r"\|\|\<\-[0-9]+\>", text).start() + 4:re.match(r"\|\|\<\-[0-9]+\>",
-                                                                                                  text).end() - 1] + "\" | " + text[
-                                                                                                                               re.match(
-                                                                                                                                   r"\|\|\<\-[0-9]+\>",
-                                                                                                                                   text).end():re.match(
-                                                                                                                                   r"\|\|\<\-[0-9]+\>[^\|]+",
-                                                                                                                                   text).end()]
-                text = text[re.match(r"\|\|\<\-[0-9]+\>[^\|]+", text).end():]
-            elif re.match(r"\|\|([^\|\n]+)", text):  # 평범한 셀 내용
-                result += "\n" + text[
-                                 re.match(r"\|\|([^\|\n]+)", text).start() + 1:re.match(r"\|\|([^\|\n]+)", text).end()]
-                text = text[re.match(r"\|\|([^\|\n]+)", text).end():]
-            elif (re.match(r"\|\|\n", text)):  # 개행
-                result += "\n| style=\"display:none\" |  \n|-"
-                Firstchar = True
-                text = text[re.match(r"\|\|\n", text).end():]
-                if (text == ""):
-                    result += "|}"
-            elif (re.match(r"\|\|", text)):
-                result += "\n|}"
-                text = text[2:]
-            # print(text) # debug
-        # 도로 text에 파싱된 결과를 삽입
-        text = result
-        # 최종 확인
-        # print(text)
-        return text
+        # 캡션 매크로는 텍스트에서 하나만 있어야 한다. 두 개 이상 있을 경우 표를 나눈다.
+        caption = ""
+        if re.match(r"\|[^|\n]+\|", text):
+            caption = re.match(r"\|([^|\n]+)\|", text).group(1)
+            text = "||" + text[re.match(r"\|([^|\n]+)\|", text).end():] # 캡션 매크로를 지운 패턴으로 변경
+            # 또 같은 패턴이 발견된다면 표를 나누어서 출력합니다.
+            if re.search(r"\n\|[^|\n]+\|", text):
+                start_val = re.search(r"\n\|[^|\n]+\|", text).start() # 패턴이 나타나는 표 위치
+                return self.convert_to_mw_table(text[:start_val])+'\n'+self.convert_to_mw_table(text[start_val+1:])
 
+        # 우선 줄 단위로 나누어서 split
+        text_row = text.split('||\n')
+        # 셀 병합 및 '{| class="wikitable", '|+' |', '|-', '|}'등의 기호로 변형 : 최종 작업 단계
+        result = '{| class="wikitable"\n|+{}'.format(caption) if caption != "" else '{|class="wikitable"'
+        table_css = {'background-color': '', 'color': '', 'width': '', 'border-color': ''}
+
+        # text_row가 ||로 안 끝나면 마지막 원소 무시
+        if text_row[-1].strip()[-2:] != "||":
+            text_row = text_row[:-1]
+
+        for idx, row_text in enumerate(text_row):
+            result_row = "\n|-"
+            row_merging_cell = 0
+            row_css = {'background-color': '', 'color': '', 'height': ''}
+            cell_divide_list = row_text.split('||') # 셀 단위로 나눈다
+
+            if cell_divide_list[-1] == "":
+                cell_divide_list = cell_divide_list[:-1]
+
+            for cidx, cell_text in enumerate(cell_divide_list):
+                table_css = self.table_macro(cell_text, row_merging_cell)['table_css']
+                row_css = self.table_macro(cell_text, row_merging_cell)['row_css']
+                row_merging_cell = self.table_macro(cell_text, row_merging_cell)['row_merging_cell']
+                result_row += self.table_macro(cell_text, row_merging_cell)['res']
+
+            # 셀별로
+            style_text = ''
+            for key in row_css:
+                if row_css[key] != "":
+                    style_text += '{}:{};'.format(key, row_css[key])
+            style_text = 'style="{}"'.format(style_text) if style_text != "" else ""
+            result_row = result_row.replace('|-', '|-{}'.format(style_text))
+            result += result_row
+            print('REMAINING - DEBUG')
+            print("".join(text_row[idx+1:]))
+
+        style_text = ''
+        for key in table_css:
+            if table_css[key] != "":
+                style_text += '{}:{};'.format(key, table_css[key])
+        style_text = 'style="{}"'.format(style_text) if style_text != "" else ""
+        result = result.replace('class="wikitable"', 'class="wikitable {}'.format(style_text))
+
+        result +="\n|}"
+
+        text= result
+        print(text)
+        return result
 
 
 
