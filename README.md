@@ -36,14 +36,14 @@ python 파일을 이용해서 텍스트 파일 하나를 미디어위키 문법�
 * Math 또는 SimpleMathJax (수식 처리)
 * ParserFunction (일부 매크로는 파서함수를 사용하므로)
 * SyntaxHighlight (문법 강조)
+* YouTube (youtube, nicovideo 사용) 
 * [{{색}} 틀 - 리브레 위키 참조](https://librewiki.net/wiki/틀:색) - 보기 좋게 정리하기 위해 사용합니다.
 * [{{각주}} 틀 - 리브레 위키 참조](https://librewiki.net/wiki/틀:각주) - 보기 좋게 정리하기 위해 사용합니다.
-* [{{숨김 시작}}, {{숨김 끝}} 틀 - 리브레 위키 참조](https://librewiki.net/wiki/틀:숨김_시작) - folding 문법 처리를 위해 사용합니다. 
+* [{{숨김 시작}}, {{숨김 끝}} 틀 - 리브레 위키 참조](https://librewiki.net/wiki/틀:숨김_시작) - folding 문법 처리를 위해 사용합니다.
 
 ## 미지원 기능
 미디어위키 엔진의 한계와 파서로 처리하기 난감한 부분이 있어서 다음과 같은 기능은 당분간 지원하지 않을 예정입니다.
 * 각주 기호 `[* ~]`안에 이중각주 혹은 여러 줄 처리할 수 있는 태그 표현
 * 다크 모드용 색 지정 태그 `{{{#color1,#color2 contents}}}`
-* 파서 처리 방식이 줄 단위로 나눈 뒤 각 줄에 대해 처리하는 방식입니다. 2가지 이상 파서가 조합할 경우 처리가 안 될 수  있습니다.
-
-
+* <colcolor>, <colbgcolor> 등 표에서 열과 관련된 기능들
+* youtube, nicovideo 매크로 이외 vimeo, navertv, kakaotv 동영상 지원 매크로

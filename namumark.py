@@ -227,7 +227,7 @@ class NamuMark(NamuMarkConstant):
             if table_open and (line.strip()[-2:] == "||" or idx == len(txt_lines) - 1):
                 table_open = False
                 # 마지막으로 추가한 res의 분기점여부도 변경
-                res[-1][2] = len(txt_lines) - 1 == idx or self.get_pattern(line) != self.get_pattern(txt_lines[idx + 1])
+                res[-1][2] = len(txt_lines) - 1 == idx or self.get_pattern(txt_lines[idx + 1]) != 'table'
 
         return res
 
@@ -388,7 +388,7 @@ class NamuMark(NamuMarkConstant):
             res = re.sub(r'(=+)#\s?(.*?)\s?#(=+)', r'\1 \2 \3\n{{숨김 시작}}', res)
             self.hiding_header = True
 
-        return res+'\n'
+        return res
 
     # 주석, 가로선 처리
     # 패턴 : ---- 또는 ## 주석
@@ -409,6 +409,7 @@ class NamuMark(NamuMarkConstant):
 
     # 중괄호 여러줄 프로세싱. 기본적으로 문법 기호 포함.
     # 멀티라인일 때는 type = multi
+    # TODO: render_proecessor recursive 오류 잡아내기
     def render_processor(self, text: str):
         r = 0
 
@@ -422,7 +423,7 @@ class NamuMark(NamuMarkConstant):
         # 우선 앞에서 저장된 temp_preparsed 내용은 파싱한다.
         def render_stack_macro():
             if len(render_stack) == 0:
-                part_res.append(self.render_processor(temp_preparsed))
+                part_res.append(temp_preparsed)
                 render_type.append('parsed')
             else:
                 part_res.append(temp_preparsed)
@@ -506,13 +507,15 @@ class NamuMark(NamuMarkConstant):
                 elif text[r:r + 3] == "}}}":
                     # 우선 앞에서 저장된 temp_preparsed 내용은 파싱한다.
                     if len(render_stack) == 0:
-                        part_res.append(self.render_processor(temp_preparsed+"}}}"))
+                        part_res.append(temp_preparsed+"}}}")
                         render_type.append('parsed')
                         temp_preparsed = ""
                         r += 3
 
                     # 파싱 타입에 따라 정리 - html이면 있는 그대로 출력
                     elif render_stack[-1] == "html":
+                        part_res.append(temp_preparsed)
+                        render_type.append('html')
                         # 역순 추적
                         for idx, pattern in enumerate(part_res[::-1]):
                             # html은 타입만 parsed로 바꾸고 내용을 바꾸지 않는다.
@@ -529,6 +532,8 @@ class NamuMark(NamuMarkConstant):
 
                     # wiki이면 div 태그 이용해서 출력
                     elif render_stack[-1] == "wiki":
+                        part_res.append(temp_preparsed)
+                        render_type.append('wiki')
                         for idx, pattern in enumerate(part_res[::-1]):
                             if render_type[-1 - idx] == 'parsed':
                                 continue
@@ -540,7 +545,7 @@ class NamuMark(NamuMarkConstant):
                             elif render_type[-1 - idx] == "wiki" and re.match(r"{{{#!wiki\s", pattern):
                                 pattern_style = pattern[10:].split('\n')[0]  # 패턴 스타일
                                 pattern_remain = "\n".join(pattern[10:].split('\n')[1:])  # 나머지 부분
-                                part_res[-1 - idx] = f"<div {pattern_style}>{self.to_mw(pattern_remain)}"
+                                part_res[-1 - idx] = f"<div {pattern_style}>{self.render_processor(pattern_remain)}"
                                 render_type[-1 - idx] = 'parsed'
                                 break
                         # 마지막으로 pattern의 맨 마지막 부분은 div 태그를 닫는다
@@ -551,6 +556,8 @@ class NamuMark(NamuMarkConstant):
 
                     # folding이면 숨김 시작-끝 태그 사용
                     elif render_stack[-1] == "folding":
+                        part_res.append(temp_preparsed)
+                        render_type.append('folding')
                         # for문 돌려보기
                         for idx, pattern in enumerate(part_res[::-1]):
                             if render_type[-1 - idx] == 'parsed':
@@ -563,8 +570,8 @@ class NamuMark(NamuMarkConstant):
                             elif render_type[-1 - idx] == "folding" and re.match(r"{{{#!folding\s", pattern):
                                 pattern_title = pattern[13:].split('\n')[0]  # 패턴 스타일
                                 pattern_remain = "\n".join(pattern[13:].split('\n')[1:])  # 나머지 부분
-                                part_res[
-                                    -1 - idx] = f"{{{{숨김 시작|title={self.inner_template(pattern_title)}}}}}\n{self.to_mw(pattern_remain)}"
+                                part_res[-1 - idx] = \
+                                    f"{{{{숨김 시작|title={self.inner_template(pattern_title)}}}}}\n{self.render_processor(pattern_remain)}"
                                 render_type[-1 - idx] = 'parsed'
                                 break
                         # 마지막으로 pattern의 맨 마지막 부분은 숨김 끝 태그 처리
@@ -575,7 +582,8 @@ class NamuMark(NamuMarkConstant):
 
                     # syntax - syntaxhighlight 태그 사용
                     elif render_stack[-1] == "syntax":
-
+                        part_res.append(temp_preparsed)
+                        render_type.append('syntax')
                         for idx, pattern in enumerate(part_res[::-1]):
                             if render_type[-1 - idx] == 'parsed':
                                 continue
@@ -587,8 +595,8 @@ class NamuMark(NamuMarkConstant):
                             elif render_type[-1 - idx] == "syntax" and re.match(r"{{{#!(syntax|source)\s", pattern):
                                 pattern_title = pattern[12:].split('\n')[0]  # 패턴 스타일
                                 pattern_remain = "\n".join(pattern[13:].split('\n')[1:])  # 나머지 부분
-                                part_res[
-                                    -1 - idx] = f"<syntaxhighlight lang=\"{self.inner_template(pattern_title)}\">\n{pattern_remain}"
+                                part_res[-1 - idx] = \
+                                    f"<syntaxhighlight lang=\"{self.inner_template(pattern_title)}\">\n{pattern_remain}"
                                 render_type[-1 - idx] = 'parsed'
                                 break
                         # 마지막으로 pattern의 맨 마지막 부분은 syntaxhighlight 태그 처리
@@ -599,13 +607,15 @@ class NamuMark(NamuMarkConstant):
 
                     # 색상 표현 {{색}}틀 사용
                     elif render_stack[-1] == "color":
+                        part_res.append(temp_preparsed)
+                        render_type.append('color')
                         for idx, pattern in enumerate(part_res[::-1]):
                             if render_type[-1 - idx] == 'parsed':
                                 continue
                             # 패턴이 없을 경우엔 중간지점이다. 위키 문법으로 파싱
                             elif render_type[-1 - idx] == 'color' and not re.match(r"{{{#([A-Za-z0-9,]+)\s",
                                                                                    pattern):
-                                part_res[-1 - idx] = self.to_mw(pattern)
+                                part_res[-1 - idx] = self.render_processor(pattern)
                                 render_type[-1 - idx] = 'parsed'
                             # 패턴이 있으면 색 틀 사용
                             elif render_type[-1 - idx] == "color" and re.match(r"{{{#([A-Za-z0-9,]+)\s", pattern):
@@ -618,8 +628,8 @@ class NamuMark(NamuMarkConstant):
                                 elif pattern_color not in WEB_COLOR_LIST.keys():
                                     pattern_color = 'black'  # 색깔 효과 무시
                                 pattern_remain = " ".join(pattern[4:].split(" ")[1:])  # 나머지 부분
-                                part_res[
-                                    -1 - idx] = f"{{{{색|{pattern_color}|{self.inner_template(self.to_mw(pattern_remain, True))}"
+                                part_res[-1 - idx] = \
+                                    f"{{{{색|{pattern_color}|{self.inner_template(self.render_processor(pattern_remain))}"
                                 render_type[-1 - idx] = 'parsed'
                                 break
                         # 마지막으로 pattern의 맨 마지막 부분은 틀 닫기
@@ -630,6 +640,8 @@ class NamuMark(NamuMarkConstant):
 
                     # 글씨 키우기/줄이기 -
                     elif render_stack[-1] == "size":
+                        part_res.append(temp_preparsed)
+                        render_type.append('size')
                         count_tag = 0
                         symbol = ""
                         for idx, pattern in enumerate(part_res[::-1]):
@@ -637,7 +649,7 @@ class NamuMark(NamuMarkConstant):
                                 continue
                             # 패턴이 없을 경우엔 중간지점이다. 위키 문법으로 파싱
                             elif render_type[-1 - idx] == 'size' and not re.match(r"{{{[+\-][1-5]\s", pattern):
-                                part_res[-1 - idx] = self.to_mw(pattern)
+                                part_res[-1 - idx] = self.render_processor(pattern)
                                 render_type[-1 - idx] = 'parsed'
                             # 패턴이 있으면 syntaxhighlight 태그 부착
                             elif render_type[-1 - idx] == "size" and re.match(r"{{{[+\-][1-5]\s", pattern):
@@ -645,9 +657,9 @@ class NamuMark(NamuMarkConstant):
                                 count_tag = int(pattern[4])
                                 pattern_remain = pattern[6:]
                                 if symbol == "+":
-                                    part_res[-1 - idx] = "<big>" * count_tag + self.to_mw(pattern)
+                                    part_res[-1 - idx] = "<big>" * count_tag + self.render_processor(pattern_remain)
                                 else:
-                                    part_res[-1 - idx] = "<small>" * count_tag + self.to_mw(pattern)
+                                    part_res[-1 - idx] = "<small>" * count_tag + self.render_processor(pattern_remain)
                                 render_type[-1 - idx] = 'parsed'
                                 break
                         # 마지막으로 pattern의 맨 마지막 부분은 틀 닫기
@@ -709,27 +721,29 @@ class NamuMark(NamuMarkConstant):
                 # 각주 닫기 처리
                 elif letter == "]":
                     if len(render_stack) == 0:
-                        part_res.append(self.to_mw(temp_preparsed+"]", True))
+                        part_res.append(temp_preparsed+"]")
                         render_type.append('parsed')
                         temp_preparsed = ""
                         r += 1
 
                     elif render_stack[-1] == 'ref':
-                        print('refTEST', part_res[-1], len(list(filter(lambda x: x=='ref', render_type))))
+                        part_res.append(temp_preparsed)
+                        render_type.append('ref')
+                        # print('refTEST', part_res[-1], len(list(filter(lambda x: x=='ref', render_type))))
                         for idx, pattern in enumerate(part_res[::-1]):
                             if render_type[-1 - idx] == 'parsed':
                                 continue
                             # 패턴이 없을 경우엔 중간지점이다. 위키 문법으로 파싱
                             elif render_type[-1 - idx] == 'ref' and not re.match(r"\[\*", pattern):
-                                part_res[-1 - idx] = self.to_mw(pattern)
+                                part_res[-1 - idx] = self.render_processor(pattern)
                                 render_type[-1 - idx] = 'parsed'
                             # 패턴이 있으면 syntaxhighlight 태그 부착
                             elif render_type[-1 - idx] == "ref" and re.match(r"\[\*", pattern):
-                                print('REF+TEST', part_res[-1-idx])
+                                # print('REF+TEST', part_res[-1-idx])
                                 ref_name = re.match(r"\[\*(.*?)\s", pattern).group(1)
-                                remain = re.match(r"\[*(.*?)\s(.*)", pattern).group(2)
-                                part_res[-1 - idx] = f'''<ref name="{ref_name}">{self.to_mw(remain)}''' if ref_name != "" \
-                                    else f'''<ref>{self.to_mw(remain)}'''
+                                remain = re.match(r"\[\*(.*?)\s(.*)", pattern).group(2)
+                                part_res[-1 - idx] = f'''<ref name="{ref_name}">{self.render_processor(remain)}''' if ref_name != "" \
+                                    else f'''<ref>{self.render_processor(remain)}'''
                                 render_type[-1 - idx] = 'parsed'
                                 break
                         # 마지막으로 pattern의 맨 마지막 부분은 틀 닫기
@@ -859,7 +873,7 @@ class NamuMark(NamuMarkConstant):
                     elif render_type[-1 - idx] == "wiki" and re.match(r"{{{#!wiki\s", pattern):
                         pattern_style = pattern[10:].split('\n')[0]  # 패턴 스타일
                         pattern_remain = "\n".join(pattern[10:].split('\n')[1:])  # 나머지 부분
-                        part_res[-1 - idx] = f"<div {pattern_style}>{self.to_mw(pattern_remain)}"
+                        part_res[-1 - idx] = f"<div {pattern_style}>{self.render_processor(pattern_remain)}"
                         render_type[-1 - idx] = 'parsed'
                         break
                 # 마지막으로 pattern의 맨 마지막 부분은 div 태그를 닫는다
@@ -881,7 +895,7 @@ class NamuMark(NamuMarkConstant):
                         pattern_title = pattern[13:].split('\n')[0]  # 패턴 스타일
                         pattern_remain = "\n".join(pattern[13:].split('\n')[1:])  # 나머지 부분
                         part_res[-1 - idx] = \
-                            f"{{{{숨김 시작|title={self.inner_template(pattern_title)}}}}}\n{self.to_mw(pattern_remain)}"
+                            f"{{{{숨김 시작|title={self.inner_template(pattern_title)}}}}}\n{self.render_processor(pattern_remain)}"
                         render_type[-1 - idx] = 'parsed'
                         break
                 # 마지막으로 pattern의 맨 마지막 부분은 숨김 끝 태그 처리
@@ -918,7 +932,7 @@ class NamuMark(NamuMarkConstant):
                     # 패턴이 없을 경우엔 중간지점이다. 위키 문법으로 파싱
                     elif render_type[-1 - idx] == 'color' and not re.match(r"{{{#([A-Za-z0-9,]+)\s",
                                                                            pattern):
-                        part_res[-1 - idx] = self.to_mw(pattern)
+                        part_res[-1 - idx] = self.render_processor(pattern)
                         render_type[-1 - idx] = 'parsed'
                     # 패턴이 있으면 색 틀 사용
                     elif render_type[-1 - idx] == "color" and re.match(r"{{{#([A-Za-z0-9,]+)\s", pattern):
@@ -931,8 +945,8 @@ class NamuMark(NamuMarkConstant):
                         elif pattern_color not in WEB_COLOR_LIST.keys():
                             pattern_color = 'black'  # 색깔 효과 무시
                         pattern_remain = " ".join(pattern[4:].split(" ")[1:])  # 나머지 부분
-                        part_res[
-                            -1 - idx] = f"{{{{색|{pattern_color}|{self.inner_template(self.to_mw(pattern_remain, True))}"
+                        part_res[-1 - idx] = \
+                            f"{{{{색|{pattern_color}|{self.inner_template(self.render_processor(pattern_remain))}"
                         render_type[-1 - idx] = 'parsed'
                         break
                 # 마지막으로 pattern의 맨 마지막 부분은 틀 닫기
@@ -948,7 +962,7 @@ class NamuMark(NamuMarkConstant):
                         continue
                     # 패턴이 없을 경우엔 중간지점이다. 위키 문법으로 파싱
                     elif render_type[-1 - idx] == 'size' and not re.match(r"{{{[+\-][1-5]\s", pattern):
-                        part_res[-1 - idx] = self.to_mw(pattern)
+                        part_res[-1 - idx] = self.render_processor(pattern)
                         render_type[-1 - idx] = 'parsed'
                     # 패턴이 있으면 syntaxhighlight 태그 부착
                     elif render_type[-1 - idx] == "size" and re.match(r"{{{[+\-][1-5]\s", pattern):
@@ -956,9 +970,9 @@ class NamuMark(NamuMarkConstant):
                         count_tag = int(pattern[4])
                         pattern_remain = pattern[6:]
                         if symbol == "+":
-                            part_res[-1 - idx] = "<big>" * count_tag + self.to_mw(pattern)
+                            part_res[-1 - idx] = "<big>" * count_tag + self.render_processor(pattern_remain)
                         else:
-                            part_res[-1 - idx] = "<small>" * count_tag + self.to_mw(pattern)
+                            part_res[-1 - idx] = "<small>" * count_tag + self.render_processor(pattern_remain)
                         render_type[-1 - idx] = 'parsed'
                         break
                 # 마지막으로 pattern의 맨 마지막 부분은 틀 닫기
@@ -973,13 +987,15 @@ class NamuMark(NamuMarkConstant):
                         continue
                     # 패턴이 없을 경우엔 중간지점이다. 위키 문법으로 파싱
                     elif render_type[-1 - idx] == 'ref' and not re.match(r"\[\*", pattern):
-                        part_res[-1 - idx] = self.to_mw(pattern)
+                        part_res[-1 - idx] = self.render_processor(pattern)
                         render_type[-1 - idx] = 'parsed'
                     # 패턴이 있으면 ref 태그 부착
                     elif render_type[-1 - idx] == "size" and re.match(r"\[\*", pattern):
-                        ref_name = re.match(r"\[*(.*?)\s", pattern).group(1)
-                        remain = re.match(r"\[*(.*?)\s(.*)", pattern).group(2)
-                        part_res[-1 - idx] = f'''<ref name="{ref_name}">{self.to_mw(remain)}'''
+                        ref_name = re.match(r"\[\*(.*?)\s", pattern).group(1)
+                        remain = re.match(r"\[\*(.*?)\s(.*)", pattern).group(2)
+                        part_res[
+                            -1 - idx] = f'''<ref name="{ref_name}">{self.render_processor(remain)}''' if ref_name != "" \
+                            else f'''<ref>{self.render_processor(remain)}'''
                         render_type[-1 - idx] = 'parsed'
                         break
                 # 마지막으로 pattern의 맨 마지막 부분은 틀 닫기
@@ -1119,10 +1135,10 @@ class NamuMark(NamuMarkConstant):
             "br": "<br />",
             "date": "{{#timel:Y-m-d H:i:sP}}",
             "datetime": "{{#timel:Y-m-d H:i:sP}}",
-            "목차": "__TOC__",  # 일단 표시. 그러나 목차 길이가 충분히 길면 지울 생각
-            "tableofcontents": "__TOC__",
-            "각주": "{{각주}}",
-            "footnote": "{{각주}}",
+            # "목차": "__TOC__",  # 일단 표시. 그러나 목차 길이가 충분히 길면 지울 생각
+            # "tableofcontents": "__TOC__",
+            "각주": "<references/ >",
+            "footnote": "<references/ >",
             "clearfix": "{{-}}",
             "pagecount": "{{NUMBEROFPAGES}}",
             "pagecount(문서)": "{{NUMBEROFARTICLES}}",
@@ -1130,6 +1146,10 @@ class NamuMark(NamuMarkConstant):
         # 단순 텍스트일 때
         if text in const_macro_list.keys():
             return const_macro_list[text]
+
+        # 목차 길이가 충분히 길면 표시하지 않는다.
+        elif text in ['목차', 'tableofcontents']:
+            return "__TOC__" if len(self.get_toc()) <= 5 else ""
 
         # 만 나이 표시
         elif re.match(r"age\(\d\d\d\d-\d\d-\d\d\)", text):
@@ -1181,6 +1201,21 @@ class NamuMark(NamuMarkConstant):
                 for vars in conts_list[1:]:
                     res += "|" + vars
                 return res + "}}"
+
+        # youtube/nicovideo 틀 - YouTube 확장기능 의존
+        elif re.match(r"(youtube|nicovideo)\((.*)\)", text):
+            conts_type = re.match(r"(youtube|nicovideo)\((.*)\)", text).group(1)
+            conts = re.match(r"(youtube|nicovideo)\((.*)\)", text).group(2)
+            conts_list = conts.split(',')
+            conts_id = conts_list[0].strip() #유튜브 id
+            conts_width = ""
+            conts_height = ""
+            for txt in conts_list[1:]:
+                if txt[0:6] == "width=":
+                    conts_width = txt[6:]
+                elif txt[0:7] == 'height=':
+                    conts_height = txt[7:]
+            return f"{{{{#tag:{conts_type}|{conts_id}|width={conts_width}|height={conts_height}}}}}"
 
         else:
             return ""
@@ -1285,7 +1320,10 @@ class NamuMark(NamuMarkConstant):
             # 우선 colspan부터 파악
             if row_merging_cell > 0:
                 row_macro = re.search(r"<-([0-9]+)>", macro_pattern.group(1))
-                row_macro_num = int(row_macro.group(1))
+                if row_macro:
+                    row_macro_num = int(row_macro.group(1))
+                else:
+                    row_macro_num = 1
                 res += ' colspan="{}"'.format(row_macro_num + row_merging_cell)
 
             # 매크로 패턴 파악
@@ -1425,7 +1463,8 @@ class NamuMark(NamuMarkConstant):
             if table_css[key] != "":
                 style_text += '{}:{};'.format(key, table_css[key])
         style_text = 'style="{}"'.format(style_text) if style_text != "" else ""
-        result = result.replace('class="wikitable"', 'class="wikitable {}'.format(style_text))
+        if style_text != "":
+            result = result.replace('class="wikitable"', 'class="wikitable" {}'.format(style_text))
 
         result += "\n|}"
 
