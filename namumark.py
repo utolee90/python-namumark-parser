@@ -779,6 +779,7 @@ class NamuMark(NamuMarkConstant):
                                 part_res[-1] += "|" + vars
                             part_res[-1] += "}}"
                         render_type[-1] = 'parsed'
+                        render_stack.pop()
                         r += 2
                         temp_preparsed = ""
                     else:
@@ -1146,6 +1147,7 @@ class NamuMark(NamuMarkConstant):
                         part_res[-1] += "|" + vars
                     part_res[-1] += "}}"
                 render_type[-1] = 'parsed'
+                render_stack.pop()
                 r += 2
                 temp_preparsed = ""
 
