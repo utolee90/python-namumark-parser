@@ -271,22 +271,22 @@ class NamuMark(NamuMarkConstant):
                 parser_result += cur_line  # 파서 결과 더하기
                 # 가로선 또는 주석 - misc_processor
                 if cur_macro == "hr" or cur_macro == "comment":
-                    result += self.misc_processor(parser_result)+'\n'
+                    result += self.misc_processor(parser_result)
                 # 문단 제목 - header_processor
                 elif cur_macro == "header":
-                    result += self.header_processor(parser_result)+'\n'
+                    result += self.header_processor(parser_result)
                 # 목록 형태
                 elif cur_macro == "list":
-                    result += self.list_parser(parser_result)+'\n'
+                    result += self.list_parser(parser_result)
                 # 블록문
                 elif cur_macro == "bq":
-                    result += self.bq_parser(parser_result)+'\n'
+                    result += self.bq_parser(parser_result)
                 # 표
                 elif cur_macro == "table":
-                    result += self.table_parser(parser_result)+'\n'
+                    result += self.table_parser(parser_result)
                 # 나머지
                 else:
-                    result += self.render_processor(parser_result)+'\n'
+                    result += self.render_processor(parser_result)
 
                 parser_result = ""  # 파서 결과는 다시 비우기
 
@@ -523,7 +523,7 @@ class NamuMark(NamuMarkConstant):
 
                     # 파싱 타입에 따라 정리 - html이면 있는 그대로 출력
                     if len(render_stack)>0 and render_stack[-1] == "html":
-                        part_res.append(temp_preparsed)
+                        part_res.append(temp_preparsed+"}}}")
                         render_type.append('html')
                         # 역순 추적
                         for idx, pattern in enumerate(part_res[::-1]):
@@ -541,7 +541,7 @@ class NamuMark(NamuMarkConstant):
 
                     # wiki이면 div 태그 이용해서 출력
                     elif len(render_stack)>0 and render_stack[-1] == "wiki":
-                        part_res.append(temp_preparsed)
+                        part_res.append(temp_preparsed+"}}}")
                         render_type.append('wiki')
                         for idx, pattern in enumerate(part_res[::-1]):
                             if render_type[-1 - idx] == 'parsed':
@@ -934,260 +934,260 @@ class NamuMark(NamuMarkConstant):
             temp_preparsed = ""
 
         # 이제 render_stack이 남아있을 때 마저 처리
-        while len(render_stack) > 0:
-
-            print('RENDER_STACK_TEST', render_stack)
-
-            # 파싱 타입에 따라 정리 - html이면 있는 그대로 출력
-            if render_stack[-1] == "html":
-                part_res.append(temp_preparsed)
-                render_type.append('html')
-                # 역순 추적
-                for idx, pattern in enumerate(part_res[::-1]):
-                    # html은 타입만 parsed로 바꾸고 내용을 바꾸지 않는다.
-                    if render_type[-1 - idx] == 'html' and (
-                            idx == len(part_res) - 1 or render_type[-2 - idx] == 'parsed'):
-                        render_type[-1 - idx] = 'parsed'
-                    elif render_type[-1 - idx] == 'parsed':
-                        continue
-                    else:
-                        break
-                temp_preparsed = ""
-                r += 3
-                render_stack.pop()  # 스택 지우기
-
-            # wiki이면 div 태그 이용해서 출력
-            elif render_stack[-1] == "wiki":
-                part_res.append(temp_preparsed)
-                render_type.append('wiki')
-                for idx, pattern in enumerate(part_res[::-1]):
-                    if render_type[-1 - idx] == 'parsed':
-                        continue
-                    # 패턴이 없을 경우엔 중간지점이다. 그때엔 그냥
-                    elif render_type[-1 - idx] == 'wiki' and not re.match(r"{{{#!wiki\s", pattern):
-                        part_res[-1 - idx] = self.to_mw(pattern, True)
-                        render_type[-1 - idx] = 'parsed'
-                    # 패턴이 있으면 div태그 부착
-                    elif render_type[-1 - idx] == "wiki" and re.match(r"{{{#!wiki\s", pattern):
-                        pattern_style = pattern[10:].split('\n')[0]  # 패턴 스타일
-                        pattern_remain = "\n".join(pattern[10:].split('\n')[1:])  # 나머지 부분
-                        part_res[-1 - idx] = f"<div {pattern_style}>{self.render_processor(pattern_remain)}"
-                        render_type[-1 - idx] = 'parsed'
-                        break
-                # 마지막으로 pattern의 맨 마지막 부분은 div 태그를 닫는다
-                part_res[-1] += '</div>'
-                temp_preparsed = ""
-                r += 3
-                render_stack.pop()  # 스택 지우기
-
-            # folding이면 숨김 시작-끝 태그 사용
-            elif render_stack[-1] == "folding":
-                part_res.append(temp_preparsed)
-                render_type.append('folding')
-                # for문 돌려보기
-                for idx, pattern in enumerate(part_res[::-1]):
-                    if render_type[-1 - idx] == 'parsed':
-                        continue
-                    # 패턴이 없을 경우엔 중간지점이다. 그때엔 그냥 파싱한다
-                    elif render_type[-1 - idx] == 'folding' and not re.match(r"{{{#!folding\s", pattern):
-                        part_res[-1 - idx] = self.to_mw(pattern, True)
-                        render_type[-1 - idx] = 'parsed'
-                    # 패턴이 있으면 숨김 시작 틀 부착
-                    elif render_type[-1 - idx] == "folding" and re.match(r"{{{#!folding\s", pattern):
-                        pattern_title = pattern[13:].split('\n')[0]  # 패턴 스타일
-                        pattern_remain = "\n".join(pattern[13:].split('\n')[1:])  # 나머지 부분
-                        part_res[-1 - idx] = \
-                            f"{{{{숨김 시작|title={self.inner_template(pattern_title)}}}}}\n{self.render_processor(pattern_remain)}"
-                        render_type[-1 - idx] = 'parsed'
-                        break
-                # 마지막으로 pattern의 맨 마지막 부분은 숨김 끝 태그 처리
-                part_res[-1] += "\n{{숨김 끝}}"
-                temp_preparsed = ""
-                r += 3
-                render_stack.pop()  # 스택 지우기
-
-            # syntax - syntaxhighlight 태그 사용
-            elif render_stack[-1] == "syntax":
-                part_res.append(temp_preparsed + "}}}")
-                render_type.append('syntax')
-                ignore_syntax = False
-
-                part_res[-1] = re.sub(r"{{{#!(syntax|source) ([A-Za-z0-9]+)\n(.*)}}}",
-                                      r"<syntaxhighlight lang=\"\2\">\n\3\n</syntaxhighlight>", part_res[-1])
-                render_type[-1] = 'parsed'
-                temp_preparsed = ""
-                r += 3
-                render_stack.pop()
-
-                # for idx, pattern in enumerate(part_res[::-1]):
-                #     if render_type[-1 - idx] == 'parsed':
-                #         continue
-                #     # 패턴이 없을 경우엔 중간지점이다. 파싱하지 않는다.
-                #     elif render_type[-1 - idx] == 'syntax' and not re.match(r"{{{#!(syntax|source)\s",
-                #                                                             pattern):
-                #         render_type[-1 - idx] = 'parsed'
-                #     # 패턴이 있으면 syntaxhighlight 태그 부착
-                #     elif render_type[-1 - idx] == "syntax" and re.match(r"{{{#!(syntax|source)\s", pattern):
-                #         pattern_title = pattern[12:].split('\n')[0]  # 패턴 스타일
-                #         pattern_remain = "\n".join(pattern[13:].split('\n')[1:])  # 나머지 부분
-                #         part_res[-1 - idx] = \
-                #             f"<syntaxhighlight lang=\"{self.inner_template(pattern_title)}\">\n{pattern_remain}"
-                #         render_type[-1 - idx] = 'parsed'
-                #         break
-                # # 마지막으로 pattern의 맨 마지막 부분은 syntaxhighlight 태그 처리
-                # part_res[-1] += "</syntaxhighlight>"
-                # temp_preparsed = ""
-                # r += 3
-                # render_stack.pop()  # 스택 지우기
-
-            # 색상 표현 {{색}}틀 사용
-            elif render_stack[-1] == "color":
-                part_res.append(temp_preparsed)
-                render_type.append('color')
-                for idx, pattern in enumerate(part_res[::-1]):
-                    if render_type[-1 - idx] == 'parsed':
-                        continue
-                    # 패턴이 없을 경우엔 중간지점이다. 위키 문법으로 파싱
-                    elif render_type[-1 - idx] == 'color' and not re.match(r"{{{#([A-Za-z0-9,]+)\s",
-                                                                           pattern):
-                        part_res[-1 - idx] = self.render_processor(pattern)
-                        render_type[-1 - idx] = 'parsed'
-                    # 패턴이 있으면 색 틀 사용
-                    elif render_type[-1 - idx] == "color" and re.match(r"{{{#([A-Za-z0-9,]+)\s", pattern):
-                        pattern_color = pattern[4:].split(' ')[0].split(',')[
-                            0]  # 색상 앞부분 확인. ,뒤의 다크모드 색상은 일단 미지원
-                        if re.match(r"[A-Fa-f0-9]{6}", pattern_color):
-                            pattern_color = "#" + pattern_color[0:6]
-                        elif re.match(r"[A-Fa-f0-9]{3,5}", pattern_color):
-                            pattern_color = '#' + pattern_color[0:3]
-                        elif pattern_color not in WEB_COLOR_LIST.keys():
-                            pattern_color = 'black'  # 색깔 효과 무시
-                        pattern_remain = " ".join(pattern[4:].split(" ")[1:])  # 나머지 부분
-                        part_res[-1 - idx] = \
-                            f"{{{{색|{pattern_color}|{self.inner_template(self.render_processor(pattern_remain))}"
-                        render_type[-1 - idx] = 'parsed'
-                        break
-                # 마지막으로 pattern의 맨 마지막 부분은 틀 닫기
-                part_res[-1] += "}}"
-                temp_preparsed = ""
-                r += 3
-                render_stack.pop()  # 스택 지우기
-
-            # 글씨 키우기/줄이기 -
-            elif render_stack[-1] == "size":
-                part_res.append(temp_preparsed)
-                render_type.append('size')
-                count_tag = 0
-                symbol = ""
-                for idx, pattern in enumerate(part_res[::-1]):
-                    if render_type[-1 - idx] == 'parsed':
-                        continue
-                    # 패턴이 없을 경우엔 중간지점이다. 위키 문법으로 파싱
-                    elif render_type[-1 - idx] == 'size' and not re.match(r"{{{[+\-][1-5]\s", pattern):
-                        part_res[-1 - idx] = self.render_processor(pattern)
-                        render_type[-1 - idx] = 'parsed'
-                    # 패턴이 있으면 syntaxhighlight 태그 부착
-                    elif render_type[-1 - idx] == "size" and re.match(r"{{{[+\-][1-5]\s", pattern):
-                        symbol = pattern[3]
-                        count_tag = int(pattern[4])
-                        pattern_remain = pattern[6:]
-                        if symbol == "+":
-                            part_res[-1 - idx] = "<big>" * count_tag + self.render_processor(pattern_remain)
-                        else:
-                            part_res[-1 - idx] = "<small>" * count_tag + self.render_processor(pattern_remain)
-                        render_type[-1 - idx] = 'parsed'
-                        break
-                # 마지막으로 pattern의 맨 마지막 부분은 틀 닫기
-                part_res[-1] += "</big>" * count_tag if symbol == "+" else (
-                    "</small>" * count_tag if symbol == "-" else "")
-                temp_preparsed = ""
-                r += 3
-                render_stack.pop()  # 스택 지우기
-
-            # 문법 무시
-            elif render_stack[-1] == "pre":
-                part_res.append(temp_preparsed + "}}}")
-                render_type.append('pre')
-                ignore_syntax = False
-
-                part_res[-1] = re.sub(r"{{{(.*?)}}}",
-                                      r"<pre>\1</pre>", part_res[-1])
-                render_type[-1] = 'parsed'
-                temp_preparsed = ""
-                r += 3
-                render_stack.pop()
-
-            # 수식 닫기
-            elif render_stack[-1] == "math":
-                part_res.append(temp_preparsed + ")]")
-                render_type.append('math')
-                ignore_syntax = False
-                part_res[-1] = re.sub(r"\[math\((.*)\)]", r"<math>\1</math>", part_res[-1])
-                render_type[-1] = 'parsed'
-                render_stack.pop()
-                r += 2
-                temp_preparsed = ""
-
-            # 문서 삽입 처리하기
-            elif render_stack[-1] == "transclusion":
-                part_res.append(temp_preparsed + ")]")
-                render_type.append('transclusion')
-                ignore_syntax = False
-                part_res[-1] = part_res[-1].replace('\n', '')  # 개행 지우기
-                conts = re.match(r"\[include\((.*)\)]", part_res[-1]).group(1)
-                conts_list = conts.split(',')  # 안의 내용 - 틀:틀이름,변수1=값1,변수2=값2,
-                transcluding = conts_list[0].strip()  # 문서 목록
-                part_res[-1] = f"{{{{{transcluding}" if ":" in transcluding else f"{{{{:{transcluding}"
-                # 내부에 변수 없을 때
-                if len(conts_list) == 1:
-                    part_res[-1] += "}}"
-                # 내부에 변수가 있을 때
-                else:
-                    for vars in conts_list[1:]:
-                        part_res[-1] += "|" + vars
-                    part_res[-1] += "}}"
-                render_type[-1] = 'parsed'
-                render_stack.pop()
-                r += 2
-                temp_preparsed = ""
-
-            # 각주
-            elif render_stack[-1] == 'ref':
-                part_res.append(temp_preparsed)
-                render_type.append('ref')
-                # print('refTEST', part_res[-1], len(list(filter(lambda x: x=='ref', render_type))))
-                # 우선 이단각주인지 확인
-                ref_stack_count = len(list(filter(lambda x: x == 'ref', render_stack)))
-                # part_res에서 역순으로 둘러보기
-                for idx, pattern in enumerate(part_res[::-1]):
-                    if render_type[-1 - idx] == 'parsed' and ref_stack_count == 1:
-                        continue
-                    elif render_type[-1 - idx] == 'parsed' and ref_stack_count > 1:
-                        part_res[-1 - idx] = self.inner_template(pattern)
-                    # 패턴이 없을 경우엔 중간지점이다. 위키 문법으로 파싱
-                    elif render_type[-1 - idx] == 'ref' and not re.match(r"\[\*", pattern):
-                        part_res[-1 - idx] = self.render_processor(pattern) if ref_stack_count == 1 \
-                            else self.inner_template(self.render_processor(pattern))
-                        render_type[-1 - idx] = 'parsed'
-                    # 패턴이 있으면 syntaxhighlight 태그 부착
-                    elif render_type[-1 - idx] == "ref" and re.match(r"\[\*", pattern):
-                        print('REF+TEST', part_res[-1 - idx])
-                        ref_name = re.match(r"\[\*([^\s]*?)", pattern).group(1)
-                        remain = re.match(r"\[\*(.*?)\s(.*)", pattern).group(2) \
-                            if re.match(r"\[\*(.*?)\s(.*)", pattern) else ""
-                        if ref_stack_count == 1:
-                            part_res[-1 - idx] = f'''<ref name="{ref_name}">{self.render_processor(remain)}''' \
-                                if ref_name != "" else f'''<ref>{self.render_processor(remain)}'''
-                        else:
-                            part_res[
-                                -1 - idx] = f'''{{{{#tag:ref|{self.inner_template(self.render_processor(remain))}|name={ref_name}}}}}'''
-                        render_type[-1 - idx] = 'parsed'
-                        break
-                # 마지막으로 pattern의 맨 마지막 부분은 틀 닫기
-                part_res[-1] += "</ref>" if ref_stack_count == 1 else "}}"
-                temp_preparsed = ""
-                r += 1
-                render_stack.pop()  # 스택 지우기
+        # while len(render_stack) > 0:
+        #
+        #     print('RENDER_STACK_TEST', render_stack)
+        #
+        #     # 파싱 타입에 따라 정리 - html이면 있는 그대로 출력
+        #     if render_stack[-1] == "html":
+        #         part_res.append(temp_preparsed)
+        #         render_type.append('html')
+        #         # 역순 추적
+        #         for idx, pattern in enumerate(part_res[::-1]):
+        #             # html은 타입만 parsed로 바꾸고 내용을 바꾸지 않는다.
+        #             if render_type[-1 - idx] == 'html' and (
+        #                     idx == len(part_res) - 1 or render_type[-2 - idx] == 'parsed'):
+        #                 render_type[-1 - idx] = 'parsed'
+        #             elif render_type[-1 - idx] == 'parsed':
+        #                 continue
+        #             else:
+        #                 break
+        #         temp_preparsed = ""
+        #         r += 3
+        #         render_stack.pop()  # 스택 지우기
+        #
+        #     # wiki이면 div 태그 이용해서 출력
+        #     elif render_stack[-1] == "wiki":
+        #         part_res.append(temp_preparsed)
+        #         render_type.append('wiki')
+        #         for idx, pattern in enumerate(part_res[::-1]):
+        #             if render_type[-1 - idx] == 'parsed':
+        #                 continue
+        #             # 패턴이 없을 경우엔 중간지점이다. 그때엔 그냥
+        #             elif render_type[-1 - idx] == 'wiki' and not re.match(r"{{{#!wiki\s", pattern):
+        #                 part_res[-1 - idx] = self.to_mw(pattern, True)
+        #                 render_type[-1 - idx] = 'parsed'
+        #             # 패턴이 있으면 div태그 부착
+        #             elif render_type[-1 - idx] == "wiki" and re.match(r"{{{#!wiki\s", pattern):
+        #                 pattern_style = pattern[10:].split('\n')[0]  # 패턴 스타일
+        #                 pattern_remain = "\n".join(pattern[10:].split('\n')[1:])  # 나머지 부분
+        #                 part_res[-1 - idx] = f"<div {pattern_style}>{self.render_processor(pattern_remain)}"
+        #                 render_type[-1 - idx] = 'parsed'
+        #                 break
+        #         # 마지막으로 pattern의 맨 마지막 부분은 div 태그를 닫는다
+        #         part_res[-1] += '</div>'
+        #         temp_preparsed = ""
+        #         r += 3
+        #         render_stack.pop()  # 스택 지우기
+        #
+        #     # folding이면 숨김 시작-끝 태그 사용
+        #     elif render_stack[-1] == "folding":
+        #         part_res.append(temp_preparsed)
+        #         render_type.append('folding')
+        #         # for문 돌려보기
+        #         for idx, pattern in enumerate(part_res[::-1]):
+        #             if render_type[-1 - idx] == 'parsed':
+        #                 continue
+        #             # 패턴이 없을 경우엔 중간지점이다. 그때엔 그냥 파싱한다
+        #             elif render_type[-1 - idx] == 'folding' and not re.match(r"{{{#!folding\s", pattern):
+        #                 part_res[-1 - idx] = self.to_mw(pattern, True)
+        #                 render_type[-1 - idx] = 'parsed'
+        #             # 패턴이 있으면 숨김 시작 틀 부착
+        #             elif render_type[-1 - idx] == "folding" and re.match(r"{{{#!folding\s", pattern):
+        #                 pattern_title = pattern[13:].split('\n')[0]  # 패턴 스타일
+        #                 pattern_remain = "\n".join(pattern[13:].split('\n')[1:])  # 나머지 부분
+        #                 part_res[-1 - idx] = \
+        #                     f"{{{{숨김 시작|title={self.inner_template(pattern_title)}}}}}\n{self.render_processor(pattern_remain)}"
+        #                 render_type[-1 - idx] = 'parsed'
+        #                 break
+        #         # 마지막으로 pattern의 맨 마지막 부분은 숨김 끝 태그 처리
+        #         part_res[-1] += "\n{{숨김 끝}}"
+        #         temp_preparsed = ""
+        #         r += 3
+        #         render_stack.pop()  # 스택 지우기
+        #
+        #     # syntax - syntaxhighlight 태그 사용
+        #     elif render_stack[-1] == "syntax":
+        #         part_res.append(temp_preparsed + "}}}")
+        #         render_type.append('syntax')
+        #         ignore_syntax = False
+        #
+        #         part_res[-1] = re.sub(r"{{{#!(syntax|source) ([A-Za-z0-9]+)\n(.*)}}}",
+        #                               r"<syntaxhighlight lang=\"\2\">\n\3\n</syntaxhighlight>", part_res[-1])
+        #         render_type[-1] = 'parsed'
+        #         temp_preparsed = ""
+        #         r += 3
+        #         render_stack.pop()
+        #
+        #         # for idx, pattern in enumerate(part_res[::-1]):
+        #         #     if render_type[-1 - idx] == 'parsed':
+        #         #         continue
+        #         #     # 패턴이 없을 경우엔 중간지점이다. 파싱하지 않는다.
+        #         #     elif render_type[-1 - idx] == 'syntax' and not re.match(r"{{{#!(syntax|source)\s",
+        #         #                                                             pattern):
+        #         #         render_type[-1 - idx] = 'parsed'
+        #         #     # 패턴이 있으면 syntaxhighlight 태그 부착
+        #         #     elif render_type[-1 - idx] == "syntax" and re.match(r"{{{#!(syntax|source)\s", pattern):
+        #         #         pattern_title = pattern[12:].split('\n')[0]  # 패턴 스타일
+        #         #         pattern_remain = "\n".join(pattern[13:].split('\n')[1:])  # 나머지 부분
+        #         #         part_res[-1 - idx] = \
+        #         #             f"<syntaxhighlight lang=\"{self.inner_template(pattern_title)}\">\n{pattern_remain}"
+        #         #         render_type[-1 - idx] = 'parsed'
+        #         #         break
+        #         # # 마지막으로 pattern의 맨 마지막 부분은 syntaxhighlight 태그 처리
+        #         # part_res[-1] += "</syntaxhighlight>"
+        #         # temp_preparsed = ""
+        #         # r += 3
+        #         # render_stack.pop()  # 스택 지우기
+        #
+        #     # 색상 표현 {{색}}틀 사용
+        #     elif render_stack[-1] == "color":
+        #         part_res.append(temp_preparsed)
+        #         render_type.append('color')
+        #         for idx, pattern in enumerate(part_res[::-1]):
+        #             if render_type[-1 - idx] == 'parsed':
+        #                 continue
+        #             # 패턴이 없을 경우엔 중간지점이다. 위키 문법으로 파싱
+        #             elif render_type[-1 - idx] == 'color' and not re.match(r"{{{#([A-Za-z0-9,]+)\s",
+        #                                                                    pattern):
+        #                 part_res[-1 - idx] = self.render_processor(pattern)
+        #                 render_type[-1 - idx] = 'parsed'
+        #             # 패턴이 있으면 색 틀 사용
+        #             elif render_type[-1 - idx] == "color" and re.match(r"{{{#([A-Za-z0-9,]+)\s", pattern):
+        #                 pattern_color = pattern[4:].split(' ')[0].split(',')[
+        #                     0]  # 색상 앞부분 확인. ,뒤의 다크모드 색상은 일단 미지원
+        #                 if re.match(r"[A-Fa-f0-9]{6}", pattern_color):
+        #                     pattern_color = "#" + pattern_color[0:6]
+        #                 elif re.match(r"[A-Fa-f0-9]{3,5}", pattern_color):
+        #                     pattern_color = '#' + pattern_color[0:3]
+        #                 elif pattern_color not in WEB_COLOR_LIST.keys():
+        #                     pattern_color = 'black'  # 색깔 효과 무시
+        #                 pattern_remain = " ".join(pattern[4:].split(" ")[1:])  # 나머지 부분
+        #                 part_res[-1 - idx] = \
+        #                     f"{{{{색|{pattern_color}|{self.inner_template(self.render_processor(pattern_remain))}"
+        #                 render_type[-1 - idx] = 'parsed'
+        #                 break
+        #         # 마지막으로 pattern의 맨 마지막 부분은 틀 닫기
+        #         part_res[-1] += "}}"
+        #         temp_preparsed = ""
+        #         r += 3
+        #         render_stack.pop()  # 스택 지우기
+        #
+        #     # 글씨 키우기/줄이기 -
+        #     elif render_stack[-1] == "size":
+        #         part_res.append(temp_preparsed)
+        #         render_type.append('size')
+        #         count_tag = 0
+        #         symbol = ""
+        #         for idx, pattern in enumerate(part_res[::-1]):
+        #             if render_type[-1 - idx] == 'parsed':
+        #                 continue
+        #             # 패턴이 없을 경우엔 중간지점이다. 위키 문법으로 파싱
+        #             elif render_type[-1 - idx] == 'size' and not re.match(r"{{{[+\-][1-5]\s", pattern):
+        #                 part_res[-1 - idx] = self.render_processor(pattern)
+        #                 render_type[-1 - idx] = 'parsed'
+        #             # 패턴이 있으면 syntaxhighlight 태그 부착
+        #             elif render_type[-1 - idx] == "size" and re.match(r"{{{[+\-][1-5]\s", pattern):
+        #                 symbol = pattern[3]
+        #                 count_tag = int(pattern[4])
+        #                 pattern_remain = pattern[6:]
+        #                 if symbol == "+":
+        #                     part_res[-1 - idx] = "<big>" * count_tag + self.render_processor(pattern_remain)
+        #                 else:
+        #                     part_res[-1 - idx] = "<small>" * count_tag + self.render_processor(pattern_remain)
+        #                 render_type[-1 - idx] = 'parsed'
+        #                 break
+        #         # 마지막으로 pattern의 맨 마지막 부분은 틀 닫기
+        #         part_res[-1] += "</big>" * count_tag if symbol == "+" else (
+        #             "</small>" * count_tag if symbol == "-" else "")
+        #         temp_preparsed = ""
+        #         r += 3
+        #         render_stack.pop()  # 스택 지우기
+        #
+        #     # 문법 무시
+        #     elif render_stack[-1] == "pre":
+        #         part_res.append(temp_preparsed + "}}}")
+        #         render_type.append('pre')
+        #         ignore_syntax = False
+        #
+        #         part_res[-1] = re.sub(r"{{{(.*?)}}}",
+        #                               r"<pre>\1</pre>", part_res[-1])
+        #         render_type[-1] = 'parsed'
+        #         temp_preparsed = ""
+        #         r += 3
+        #         render_stack.pop()
+        #
+        #     # 수식 닫기
+        #     elif render_stack[-1] == "math":
+        #         part_res.append(temp_preparsed + ")]")
+        #         render_type.append('math')
+        #         ignore_syntax = False
+        #         part_res[-1] = re.sub(r"\[math\((.*)\)]", r"<math>\1</math>", part_res[-1])
+        #         render_type[-1] = 'parsed'
+        #         render_stack.pop()
+        #         r += 2
+        #         temp_preparsed = ""
+        #
+        #     # 문서 삽입 처리하기
+        #     elif render_stack[-1] == "transclusion":
+        #         part_res.append(temp_preparsed + ")]")
+        #         render_type.append('transclusion')
+        #         ignore_syntax = False
+        #         part_res[-1] = part_res[-1].replace('\n', '')  # 개행 지우기
+        #         conts = re.match(r"\[include\((.*)\)]", part_res[-1]).group(1)
+        #         conts_list = conts.split(',')  # 안의 내용 - 틀:틀이름,변수1=값1,변수2=값2,
+        #         transcluding = conts_list[0].strip()  # 문서 목록
+        #         part_res[-1] = f"{{{{{transcluding}" if ":" in transcluding else f"{{{{:{transcluding}"
+        #         # 내부에 변수 없을 때
+        #         if len(conts_list) == 1:
+        #             part_res[-1] += "}}"
+        #         # 내부에 변수가 있을 때
+        #         else:
+        #             for vars in conts_list[1:]:
+        #                 part_res[-1] += "|" + vars
+        #             part_res[-1] += "}}"
+        #         render_type[-1] = 'parsed'
+        #         render_stack.pop()
+        #         r += 2
+        #         temp_preparsed = ""
+        #
+        #     # 각주
+        #     elif render_stack[-1] == 'ref':
+        #         part_res.append(temp_preparsed)
+        #         render_type.append('ref')
+        #         # print('refTEST', part_res[-1], len(list(filter(lambda x: x=='ref', render_type))))
+        #         # 우선 이단각주인지 확인
+        #         ref_stack_count = len(list(filter(lambda x: x == 'ref', render_stack)))
+        #         # part_res에서 역순으로 둘러보기
+        #         for idx, pattern in enumerate(part_res[::-1]):
+        #             if render_type[-1 - idx] == 'parsed' and ref_stack_count == 1:
+        #                 continue
+        #             elif render_type[-1 - idx] == 'parsed' and ref_stack_count > 1:
+        #                 part_res[-1 - idx] = self.inner_template(pattern)
+        #             # 패턴이 없을 경우엔 중간지점이다. 위키 문법으로 파싱
+        #             elif render_type[-1 - idx] == 'ref' and not re.match(r"\[\*", pattern):
+        #                 part_res[-1 - idx] = self.render_processor(pattern) if ref_stack_count == 1 \
+        #                     else self.inner_template(self.render_processor(pattern))
+        #                 render_type[-1 - idx] = 'parsed'
+        #             # 패턴이 있으면 syntaxhighlight 태그 부착
+        #             elif render_type[-1 - idx] == "ref" and re.match(r"\[\*", pattern):
+        #                 print('REF+TEST', part_res[-1 - idx])
+        #                 ref_name = re.match(r"\[\*([^\s]*?)", pattern).group(1)
+        #                 remain = re.match(r"\[\*(.*?)\s(.*)", pattern).group(2) \
+        #                     if re.match(r"\[\*(.*?)\s(.*)", pattern) else ""
+        #                 if ref_stack_count == 1:
+        #                     part_res[-1 - idx] = f'''<ref name="{ref_name}">{self.render_processor(remain)}''' \
+        #                         if ref_name != "" else f'''<ref>{self.render_processor(remain)}'''
+        #                 else:
+        #                     part_res[
+        #                         -1 - idx] = f'''{{{{#tag:ref|{self.inner_template(self.render_processor(remain))}|name={ref_name}}}}}'''
+        #                 render_type[-1 - idx] = 'parsed'
+        #                 break
+        #         # 마지막으로 pattern의 맨 마지막 부분은 틀 닫기
+        #         part_res[-1] += "</ref>" if ref_stack_count == 1 else "}}"
+        #         temp_preparsed = ""
+        #         r += 1
+        #         render_stack.pop()  # 스택 지우기
 
         res = "".join(part_res)
 
