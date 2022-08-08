@@ -462,6 +462,8 @@ class NamuMark(NamuMarkConstant):
                                 "strike", "strike2", "sup", "sub", "nowiki"]
 
         tmp = 0
+
+        print(new_macros)
         while r < len(text) and mx < len(new_macros):
             tmp = r
             start_val = new_macros[mx][1]
@@ -745,17 +747,17 @@ class NamuMark(NamuMarkConstant):
                     tgn_total = tgn_total + "*" * diff if tbl['type'] == "ul" else tgn_total + "#" * diff
                     lvl = tbl['level']
                     tgn = tbl['type']
-                    res += tgn_total + self.render_processor(tbl['preparsed']) + "\n"
+                    res += tgn_total + self.to_mw(tbl['preparsed']) + "\n"
 
                 # 레벨 숫자가 앞의 숫자와 동일
                 elif lvl == tbl['level'] and tgn == tbl['type']:
-                    res += tgn_total + self.render_processor(tbl['preparsed']) + "\n"
+                    res += tgn_total + self.to_mw(tbl['preparsed']) + "\n"
 
                 # 레벨 숫자가 앞의 숫자와 동일, 다른 타입
                 elif lvl == tbl['level'] and tgn != tbl['type']:
                     tgn_total = tgn_total[:-1] + "*" if tbl['type'] == "ul" else tgn_total[:-1] + "#"
                     tgn = tbl['type']
-                    res += tgn_total + self.render_processor(tbl['preparsed']) + "\n"
+                    res += tgn_total + self.to_mw(tbl['preparsed']) + "\n"
 
                 # 레벨 숫자가 앞의 숫자보다 작음,
                 elif lvl > tbl['level']:
@@ -773,13 +775,13 @@ class NamuMark(NamuMarkConstant):
 
                     lvl = tbl['level']
                     tgn = tbl['type']
-                    res += tgn_total + self.render_processor(tbl['preparsed']) + "\n"
+                    res += tgn_total + self.to_mw(tbl['preparsed']) + "\n"
 
         else:
             for tbl in list_table:
                 # 같은 레벨, 같은 태그명
                 if lvl == tbl['level'] and tgn == tbl['type']:
-                    res += f"<li>{self.render_processor(tbl['preparsed'])}</li>\n"
+                    res += f"<li>{self.to_mw(tbl['preparsed'])}</li>\n"
                 # 같은 레벨, 태그명만 다를 때
                 elif lvl == tbl['level'] and tgn != tbl['type']:
                     # 태그 닫기
@@ -787,11 +789,11 @@ class NamuMark(NamuMarkConstant):
                     tgn = tbl['type']
                     open_tag_list[-1] = tgn
                     res += f"<{tbl['type']}>\n"
-                    res += f"<li>{self.render_processor(tbl['preparsed'])}</li>\n"
+                    res += f"<li>{self.to_mw(tbl['preparsed'])}</li>\n"
                 # 레벨값보다 수준이 더 클 때
                 elif lvl + 1 == tbl['level']:
                     res += f"<{tbl['type']}>\n"
-                    res += f"<li>{self.render_processor(tbl['preparsed'])}</li>\n"
+                    res += f"<li>{self.to_mw(tbl['preparsed'])}</li>\n"
                     lvl = tbl['level']
                     tgn = tbl['type']
                     open_tag_list.append(tbl['type'])
@@ -804,12 +806,12 @@ class NamuMark(NamuMarkConstant):
                     lvl = tbl['level']
 
                     if open_tag_list[-1] == tbl['type']:
-                        res += f"<li>{self.render_processor(tbl['preparsed'])}</li>\n"
+                        res += f"<li>{self.to_mw(tbl['preparsed'])}</li>\n"
                         tgn = tbl['type']
                     else:
                         res += f"</{open_tag_list[-1][0:2]}>\n"
                         res += f"<{tbl['type']}>\n"
-                        res += f"<li>{self.render_processor(tbl['preparsed'])}</li>\n"
+                        res += f"<li>{self.to_mw(tbl['preparsed'])}</li>\n"
                         tgn = tbl['type']
 
             # 마지막으로 남아있으면...
@@ -947,7 +949,7 @@ class NamuMark(NamuMarkConstant):
     def link_processor(self, link, text):
         # 외부 링크
         if re.match(r"https?://(.*)", link):
-            return f"{link}" if text == "" else f"[{link} {self.render_processor(text)}]"
+            return f"{link}" if text == "" else f"[{link} {self.to_mw(text)}]"
         # 문단기호 링크에 대비
         elif re.match(r"$(.*?)#s-(.*)", link):
             article = re.match(r"$(.*?)#s-(.*)", link).group(1)
@@ -957,14 +959,14 @@ class NamuMark(NamuMarkConstant):
             # article이 비어있거나 문서명과 같을 때는
             if article == "" or article == self.WIKI_PAGE:
                 return f"[[#{paragraph_name}]]" if text == ""\
-                    else f"[[#{paragraph_name}|{self.render_processor(text)}]]"
+                    else f"[[#{paragraph_name}|{self.to_mw(text)}]]"
             # article이 다른 거면 문단명을 알 수 없으므로 일단 파싱하지 않는다.
             else:
                 return f"[[{article}#s-{paragraph}]]" if text == "" \
-                    else f"[[{article}#s-{paragraph}|{self.render_processor(text)}]]"
+                    else f"[[{article}#s-{paragraph}|{self.to_mw(text)}]]"
 
         else:
-            return f"[[{link}]]" if text == "" else f"[[{link}|{self.render_processor(text)}]]"
+            return f"[[{link}]]" if text == "" else f"[[{link}|{self.to_mw(text)}]]"
 
     # 블록 파싱 함수
     # 우선 [br]태그로 다음 줄로 넘기는 방식은 사용하지 않으며, 맨 앞에 >가 있다는 것을 보증할 때에만 사용
@@ -989,7 +991,7 @@ class NamuMark(NamuMarkConstant):
                 # 만약 여전히 블록 안에 있을 때
                 if re.match(r">(.*?)\n", tmp_line):
                     if tmp_etc != "":
-                        res += self.render_processor(tmp_etc)
+                        res += self.to_mw(tmp_etc)
                         print("tmp_etc : ", tmp_etc)
                         tmp_etc = ""
                     tmp_block += tmp_line
@@ -1010,7 +1012,7 @@ class NamuMark(NamuMarkConstant):
                 print("tmp_line : ", tmp_line, idx)
                 if re.match(r">(.*?)", tmp_line):
                     if tmp_etc != "":
-                        res += self.render_processor(tmp_etc)
+                        res += self.to_mw(tmp_etc)
                         print("tmp_etc : ", tmp_etc)
                         tmp_etc = ""
                     tmp_block += tmp_line
@@ -1023,7 +1025,7 @@ class NamuMark(NamuMarkConstant):
                         tmp_block = ""
                     tmp_etc += tmp_line
                     print("tmp_etc: ", tmp_etc)
-                    res += self.render_processor(tmp_etc)
+                    res += self.to_mw(tmp_etc)
                 idx = len(text_wo_bq)
 
         print('function_end')
