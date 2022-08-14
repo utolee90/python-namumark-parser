@@ -279,7 +279,7 @@ class NamuMark(NamuMarkConstant):
 
             # 헤더 매크로
             elif re.match(r"\n=.*?=\s*(\n|$)", text[i - 1:]):
-                pattern_end = re.match(r"\n=.*?=\s*\n", text[i - 1:]).end()
+                pattern_end = re.match(r"\n=.*?=\s*(\n|$)", text[i - 1:]).end()
                 res['position'].append([i - frn, i + pattern_end - 1 - frn])
                 res['value'].append('header')
                 i += pattern_end - 1
@@ -294,7 +294,8 @@ class NamuMark(NamuMarkConstant):
             # nowiki/pre 매크로
             elif re.match(r"{{{([^#+\-]|[+\-][^12345]|#[^!0-9A-Za-z])", text[i:]):
                 # 줄에 있으면
-                if re.search(r"}}}[^}]", txt_lines[ln]):
+                # print(ln, txt_lines)
+                if ln < len(txt_lines) and re.search(r"}}}[^}]", txt_lines[ln]):
                     closed_pos = re.search(r"}}}[^}]", text[i:]).start()
                     res['position'].append([i - frn, i + closed_pos + 3 - frn])
                     res['value'].append('nowiki')
@@ -422,8 +423,8 @@ class NamuMark(NamuMarkConstant):
                             else:
                                 i += 1
             # ln값 재조정
-            if ln < len(txt_position) and i > txt_position[ln]:
-                ln = len(list(filter(lambda x: x < i, txt_position)))
+            if ln < len(txt_position) and i - frn > txt_position[ln]:
+                ln = len(list(filter(lambda x: x < i - frn, txt_position)))
 
         res['remain_stack'] = macro_stack
         return res
@@ -889,7 +890,7 @@ class NamuMark(NamuMarkConstant):
         }
         # 단순 텍스트일 때
         if inner_text in const_macro_list.keys():
-            return const_macro_list[text]
+            return const_macro_list[inner_text]
 
         # 목차 길이가 충분히 길면 표시하지 않는다.
         elif inner_text in ['목차', 'tableofcontents']:
