@@ -385,9 +385,13 @@ class NamuMark(NamuMarkConstant):
                                     i += 3 if i < txt_length - 3 else 2
 
                                 elif cur_macro == 'list' and (
-                                        re.match(r"($|\n$|\n{2})", text[i:]) or re.match(r"\n[^\u0020]",
-                                                                                         text[i:]) or re.match(
-                                        r"\n\u0020+[^*1AIi]", text[i:])):
+                                        re.match(r"($|\n$|\n\n)", text[i:])
+                                        or re.match(r"\n[^\u0020]", text[i:])
+                                        # or re.match(r"\n\u0020*[=\-\|]", text[i:])
+                                        or re.match(r"\n\u0020+[^*1AIi]", text[i:])
+                                ):
+                                    if re.match(r"\n\u0020+[^*1AIi]", text[i:]):
+                                        print('TEXT::: ', re.match(r"\n\s+[^*1AIi]", text[i:]).group(), i)
                                     macro_val = macro_stack.pop()
                                     res['position'].append([macro_val[1], i + 1 - frn])
                                     res['value'].append(macro_val[0])
@@ -447,13 +451,16 @@ class NamuMark(NamuMarkConstant):
         macros_value = macros['value']
 
         new_macros = []
-        for ix, val in enumerate(macros_positions):
+        # macros_position은 닫히는 순서대로 정렬하므로 바깥 부분을 포괄하기 위해서는 늦게 닫히는 애들 기준으로 정리
+        for ix, val in enumerate(macros_positions[::-1]):
             inclusion = False
             for x in new_macros:
                 if val[0] >= x[1] and val[1] <=x[2]:
                     inclusion = True
             if not inclusion:
-                new_macros.append([macros_value[ix], val[0], val[1]])
+                new_macros.append([macros_value[len(macros_positions) - ix -1], val[0], val[1]])  # 뒤에서부터 추가
+
+        new_macros = new_macros[::-1] # 순서 뒤집기.
 
         r = 0
         mx = 0
@@ -463,7 +470,7 @@ class NamuMark(NamuMarkConstant):
 
         tmp = 0
 
-        print(new_macros)
+        # print(new_macros)
         while r < len(text) and mx < len(new_macros):
             tmp = r
             start_val = new_macros[mx][1]
@@ -486,6 +493,7 @@ class NamuMark(NamuMarkConstant):
                     result += self.list_parser(text[start_val:end_val])
                     get_next()
                 elif macro_val == "table":
+                    print("TABLE_PARSER\n", text[start_val:end_val])
                     result += self.table_parser(text[start_val:end_val])
                     get_next()
                 elif macro_val == "bq":
@@ -502,7 +510,7 @@ class NamuMark(NamuMarkConstant):
                     result += self.link_processor(link_val, express_cont)
                     get_next()
                 elif macro_val == "macro":
-                    result += self.simple_macro_processor(text[start_val:end_val])
+                    result += self.macro_processor(text[start_val:end_val])
                     get_next()
                 elif macro_val == "ref":
                     result += self.ref_processor(text[start_val:end_val])
@@ -739,12 +747,13 @@ class NamuMark(NamuMarkConstant):
         # 우선 ul과 ol class="decimal"로만 구성되어 있을 때는 심플하게 파싱하기
         list_table_kinds = set(map(lambda x: x['type'], list_table))
 
-        if list_table_kinds.issubset({'ul', 'ol class="decimal"'}):
+        if list_table_kinds.issubset({'ul', 'ol class="decimal"', 'dd'}):
             for tbl in list_table:
                 # 레벨 숫자가 tbl보다 작을 때
                 if lvl < tbl['level']:
                     diff = tbl['level'] - lvl
-                    tgn_total = tgn_total + "*" * diff if tbl['type'] == "ul" else tgn_total + "#" * diff
+                    tgn_total = tgn_total + "*" * diff if tbl['type'] == "ul" \
+                        else (tgn_total + "#" * diff if tbl['type'] == 'ol class="decimal"' else tgn_total + ":" *diff)
                     lvl = tbl['level']
                     tgn = tbl['type']
                     res += tgn_total + self.to_mw(tbl['preparsed']) + "\n"
@@ -755,7 +764,8 @@ class NamuMark(NamuMarkConstant):
 
                 # 레벨 숫자가 앞의 숫자와 동일, 다른 타입
                 elif lvl == tbl['level'] and tgn != tbl['type']:
-                    tgn_total = tgn_total[:-1] + "*" if tbl['type'] == "ul" else tgn_total[:-1] + "#"
+                    tgn_total = tgn_total[:-1] + "*" if tbl['type'] == "ul" else \
+                        (tgn_total[:-1] + "#" if tbl['type'] == 'ol class="decimal"' else tgn_total[:-1] + ":")
                     tgn = tbl['type']
                     res += tgn_total + self.to_mw(tbl['preparsed']) + "\n"
 
@@ -766,12 +776,14 @@ class NamuMark(NamuMarkConstant):
 
                     # 레벨 기준으로 확인
                     if (tgn_total_level == "*" and tbl['type'] == 'ul') or (
-                            tgn_total_level == "#" and tbl['type'] == 'ol class="decimal"'):
+                            tgn_total_level == "#" and tbl['type'] == 'ol class="decimal"') or (
+                            tgn_total_level == ":" and tbl['type'] == 'dd'
+                    ):
                         # 그냥 컷을 함.
                         tgn_total = tgn_total[:tbl['level']]
                     else:
                         tgn_total = tgn_total[:tbl['level'] - 1] + "*" if tbl['type'] == 'ul' \
-                            else tgn_total[:tbl['level'] - 1] + "#"
+                    else (tgn_total[:tbl['level'] - 1] + "#" if tbl['type'] == 'ol class="decimal"' else tgn_total[:tbl['level'] - 1] + ":")
 
                     lvl = tbl['level']
                     tgn = tbl['type']
@@ -825,6 +837,7 @@ class NamuMark(NamuMarkConstant):
     def list_line_parser(self, text: str):
         res = {}
         # 공백 갯수
+        print('lastval:::\n', text, sep="")
         spacing = len(re.match(r"^(\s{1,5})", text).group(1))
         res['level'] = spacing
         if text[spacing] == "*":
@@ -836,6 +849,10 @@ class NamuMark(NamuMarkConstant):
                     res['type'] = tg[1]
                     res['preparsed'] = text[spacing + 2:]
                     break
+            # 공백이 있을 때 사용.
+            else:
+                res['type'] = 'dd'
+                res['preparsed'] = text[spacing:]
         return res
 
     # 각주 처리 - 각주 안에 각주가 있을 때 처리 추가
@@ -854,7 +871,8 @@ class NamuMark(NamuMarkConstant):
 
 
     # [매크로] 형식의 함수 처리하기
-    def simple_macro_processor(self, text: str):
+    def macro_processor(self, text: str):
+        inner_text = re.search(r"\[(.*)]", text).group(1)
         const_macro_list = {
             "br": "<br />",
             "date": "{{#timel:Y-m-d H:i:sP}}",
@@ -870,40 +888,40 @@ class NamuMark(NamuMarkConstant):
             "pagecount(문서)": "{{NUMBEROFARTICLES}}",
         }
         # 단순 텍스트일 때
-        if text in const_macro_list.keys():
+        if inner_text in const_macro_list.keys():
             return const_macro_list[text]
 
         # 목차 길이가 충분히 길면 표시하지 않는다.
-        elif text in ['목차', 'tableofcontents']:
+        elif inner_text in ['목차', 'tableofcontents']:
             return "__TOC__" if len(self.get_toc()) <= 5 else ""
 
         # 만 나이 표시
-        elif re.match(r"age\(\d\d\d\d-\d\d-\d\d\)", text):
-            yr = re.match(r"age\((\d\d\d\d)-(\d\d)-(\d\d)\)", text).group(1)
-            mn = re.match(r"age\((\d\d\d\d)-(\d\d)-(\d\d)\)", text).group(2)
-            dy = re.match(r"age\((\d\d\d\d)-(\d\d)-(\d\d)\)", text).group(3)
+        elif re.match(r"age\(\d\d\d\d-\d\d-\d\d\)", inner_text):
+            yr = re.match(r"age\((\d\d\d\d)-(\d\d)-(\d\d)\)", inner_text).group(1)
+            mn = re.match(r"age\((\d\d\d\d)-(\d\d)-(\d\d)\)", inner_text).group(2)
+            dy = re.match(r"age\((\d\d\d\d)-(\d\d)-(\d\d)\)", inner_text).group(3)
             return f"{{{{#expr: {{{{현재년}}}} - {yr} - ({{{{현재월}}}} <= {mn} and {{{{현재일}}}} < {dy})}}}}"
 
         # 잔여일수/경과일수 표시
-        elif re.match(r"dday\(\d\d\d\d-\d\d-\d\d\)", text):
-            yr = re.match(r"dday\((\d\d\d\d)-(\d\d)-(\d\d)\)", text).group(1)
-            mn = re.match(r"dday\((\d\d\d\d)-(\d\d)-(\d\d)\)", text).group(2)
-            dy = re.match(r"dday\((\d\d\d\d)-(\d\d)-(\d\d)\)", text).group(3)
+        elif re.match(r"dday\(\d\d\d\d-\d\d-\d\d\)", inner_text):
+            yr = re.match(r"dday\((\d\d\d\d)-(\d\d)-(\d\d)\)", inner_text).group(1)
+            mn = re.match(r"dday\((\d\d\d\d)-(\d\d)-(\d\d)\)", inner_text).group(2)
+            dy = re.match(r"dday\((\d\d\d\d)-(\d\d)-(\d\d)\)", inner_text).group(3)
             return f"{{{{#ifexpr:{{{{#time:U|now}}}} - {{{{#time:U|{yr}-{mn}-{dy}}}}}>0|+}}}}\
             {{{{#expr:floor (({{{{#time:U|now}}}} - {{{{#time:U|{yr}-{mn}-{dy}}}}})/86400)}}}}"
         # 수식 기호
-        elif re.match(r"math\((.*)\)", text):
-            tex = re.match(r"math\((.*)\)", text).group(1)
+        elif re.match(r"math\((.*)\)", inner_text):
+            tex = re.match(r"math\((.*)\)", inner_text).group(1)
             return f"<math>{tex}</math>"
         # 책갈피 기호
-        elif re.match(r"anchor\((.*)\)", text):
-            aname = re.match(r"anchor\((.*)\)", text).group(1)
+        elif re.match(r"anchor\((.*)\)", inner_text):
+            aname = re.match(r"anchor\((.*)\)", inner_text).group(1)
             return f"<span id=\"{aname}\"></span>"
         # 루비 문자 매크로
-        elif re.match(r"ruby\((.*)\)", text):
-            cont = re.match(r"ruby\((.*?)(,ruby=.*?)?(,color=.*?)?\)", text).group(1)
-            ruby_part = re.match(r"ruby\((.*?)(,ruby=.*?)?(,color=.*?)?\)", text).group(2)
-            color_part = re.match(r"ruby\((.*?)(,ruby=.*?)?(,color=.*?)?\)", text).group(3)
+        elif re.match(r"ruby\((.*)\)", inner_text):
+            cont = re.match(r"ruby\((.*?)(,ruby=.*?)?(,color=.*?)?\)", inner_text).group(1)
+            ruby_part = re.match(r"ruby\((.*?)(,ruby=.*?)?(,color=.*?)?\)", inner_text).group(2)
+            color_part = re.match(r"ruby\((.*?)(,ruby=.*?)?(,color=.*?)?\)", inner_text).group(3)
             if ruby_part != "":
                 ruby = ruby_part[6:]
                 if color_part != "":
@@ -913,8 +931,8 @@ class NamuMark(NamuMarkConstant):
                     return f"<ruby><rb>{cont}</rb><rp>(</rp><rt>{ruby}</rt><rp>)</rp>"
 
         # 틀 포함 문구
-        elif re.match(r"include\((.*)\)", text):
-            conts = re.match(r"include\((.*)\)", text).group(1)
+        elif re.match(r"include\((.*)\)", inner_text):
+            conts = re.match(r"include\((.*)\)", inner_text).group(1)
             conts_list = conts.split(',')  # 안의 내용 - 틀:틀이름,변수1=값1,변수2=값2,
             transcluding = conts_list[0].strip()  # 문서 목록
             res = f"{{{{{transcluding}" if ":" in transcluding else f"{{{{:{transcluding}"
@@ -928,9 +946,9 @@ class NamuMark(NamuMarkConstant):
                 return res + "}}"
 
         # youtube/nicovideo 틀 - YouTube 확장기능 의존
-        elif re.match(r"(youtube|nicovideo)\((.*)\)", text):
-            conts_type = re.match(r"(youtube|nicovideo)\((.*)\)", text).group(1)
-            conts = re.match(r"(youtube|nicovideo)\((.*)\)", text).group(2)
+        elif re.match(r"(youtube|nicovideo)\((.*)\)", inner_text):
+            conts_type = re.match(r"(youtube|nicovideo)\((.*)\)", inner_text).group(1)
+            conts = re.match(r"(youtube|nicovideo)\((.*)\)", inner_text).group(2)
             conts_list = conts.split(',')
             conts_id = conts_list[0].strip() #유튜브 id
             conts_width = ""
