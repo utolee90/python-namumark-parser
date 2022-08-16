@@ -257,18 +257,22 @@ class NamuMark(NamuMarkConstant):
         if text[0] != '\n':
             text = '\n' + text  # 문법 원활하게 처리하기 위해 텍스트 처음에 개행기호 집어넣기
             forced_return = True
-
-        txt_length = len(text)  # 길이
-        txt_lines = list(map(lambda x: x + '\n', text.split('\n')))  # 글을 출력하기
-        txt_lines[-1] = txt_lines[-1][:-1]  # 마지막 \n 지우기
-        txt_position = [len("".join(txt_lines[:k])) for k, val in enumerate(txt_lines)]  # 글의 위치값
-        res = {"position": [], "value": []}
-        macro_stack = []
         i = int(forced_return)  # 낱자 번호
         frn = int(forced_return)  # 위치 정할 때 사용.
-        ln = 0  # 줄 번호
+
+        txt_length = len(text)  # 길이
+        txt_lines = list(map(lambda x: x + '\n', text[frn:].split('\n')))  # 글을 출력하기
+        txt_lines[-1] = txt_lines[-1][:-1] if txt_lines[-1][-1] == "\n" else txt_lines[-1]  # 마지막 \n 지우기
+        txt_position = [frn + len("".join(txt_lines[:k+1])) for k, val in enumerate(txt_lines)]  # 글의 위치값
+
+        res = {"position": [], "value": []}
+        macro_stack = []
+
+        i = int(forced_return)  # 낱자 번호
 
         while i < txt_length:
+            # ln (줄 번호) 위치 선정의
+            ln = len(list(filter(lambda x: x < i - frn, txt_position)))
 
             # 가로선 매크로
             if re.match(r"\n-{4,10}(\n|$)", text[i - 1:]):
@@ -294,9 +298,9 @@ class NamuMark(NamuMarkConstant):
             # nowiki/pre 매크로
             elif re.match(r"{{{([^#+\-]|[+\-][^12345]|#[^!0-9A-Za-z])", text[i:]):
                 # 줄에 있으면
-                # print(ln, txt_lines)
-                if ln < len(txt_lines) and re.search(r"}}}[^}]", txt_lines[ln]):
-                    closed_pos = re.search(r"}}}[^}]", text[i:]).start()
+                print(i, ln, txt_position, text[i:], txt_lines)
+                if re.search(r"}}}([^}]|$)", txt_lines[ln]):
+                    closed_pos = re.search(r"}}}([^}]|$)", text[i:]).start()
                     res['position'].append([i - frn, i + closed_pos + 3 - frn])
                     res['value'].append('nowiki')
                     i += closed_pos + 3 - frn
@@ -422,9 +426,7 @@ class NamuMark(NamuMarkConstant):
                                     i += 1
                             else:
                                 i += 1
-            # ln값 재조정
-            if ln < len(txt_position) and i - frn > txt_position[ln]:
-                ln = len(list(filter(lambda x: x < i - frn, txt_position)))
+
 
         res['remain_stack'] = macro_stack
         return res
