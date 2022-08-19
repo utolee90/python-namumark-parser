@@ -301,7 +301,7 @@ class NamuMark(NamuMarkConstant):
                 if not in_table:
                     macro_line_stack.append(['table', ln])
                 # 표가 닫혀있지 않을 때
-                if not re.search(r"\|\|\n$", cont):
+                if not re.search(r"\|\|\n?$", cont):
                     in_table = True
                 elif ln < len(txt_lines) - 1 and re.match(r"\|\|", txt_lines[ln + 1]):
                     in_table = True
@@ -314,7 +314,7 @@ class NamuMark(NamuMarkConstant):
                         raise Exception("WORK ERR!!!")
             else:
                 if in_table:
-                    if re.search(r"\|\|\n$", cont) and (
+                    if re.search(r"\|\|\n?$", cont) and (
                             ln == len(txt_lines) - 1 or not re.match(r"\|\|", txt_lines[ln + 1])):
                         last_val = macro_line_stack.pop()
                         if last_val[0] == 'table':
@@ -327,7 +327,7 @@ class NamuMark(NamuMarkConstant):
                     if re.match(r"=", cont):
                         line_res.append(['header', ln, ln + 1])
                     # 가로선
-                    elif re.match(r"-{4,10}\n", cont):
+                    elif re.match(r"-{4,10}\n?$", cont):
                         line_res.append(['hr', ln, ln + 1])
                     # 주석
                     elif re.match(r"##", cont):
@@ -342,7 +342,15 @@ class NamuMark(NamuMarkConstant):
                     elif re.match(r"\u0020", cont):
 
                         if len(line_res) == 0 or line_res[-1][0] != "list" or line_res[-1][2] != ln:
-                            line_res.append(['list', ln, ln + 1])
+                            # 처음에는 문장기호가 있어야 한다.
+                            if re.match(r"\u0020+(\*|1\.|A\.|I\.|i\.)",cont):
+                                line_res.append(['list', ln, ln + 1])
+                            else:
+                                # 한줄 띄우기 인식
+                                if 'table' not in list(map(lambda x: x[0], macro_line_stack)) and ln > 0 and \
+                                        (len(line_res) == 0 or line_res[-1][2] != ln):
+                                    if cont != "\n" and txt_lines[ln - 1] != "\n":
+                                        res.append(['br', txt_position[ln - 1] - 1, txt_position[ln - 1]])
                         else:
                             line_res[-1][2] += 1
                     else:
@@ -385,7 +393,10 @@ class NamuMark(NamuMarkConstant):
 
         # line_res 이용해서 결과 추출
         for cont in line_res:
-            res.append([cont[0], txt_position[cont[1] - 1], txt_position[cont[2] - 1]])
+            if cont[1] == 0:
+                res.append([cont[0], 0, txt_position[cont[2] - 1]])
+            else:
+                res.append([cont[0], txt_position[cont[1] - 1], txt_position[cont[2] - 1]])
 
         # render
         for cont in render_list:
@@ -583,8 +594,8 @@ class NamuMark(NamuMarkConstant):
         #
         # res['remain_stack'] = macro_stack
 
-        print("RENDER_REMAINDER:::", render_remainder)
-        print("PRE_MACRO_REMAINDER:::", pre_macro_remainder)
+        # print("RENDER_REMAINDER:::", render_remainder)
+        # print("PRE_MACRO_REMAINDER:::", pre_macro_remainder)
         return res
 
     # 미디어위키 메인함수
@@ -634,7 +645,6 @@ class NamuMark(NamuMarkConstant):
 
         tmp = 0
 
-        # print(new_macros)
         while r < len(text) and mx < len(new_macros):
             tmp = r
             start_val = new_macros[mx][1]
@@ -683,7 +693,7 @@ class NamuMark(NamuMarkConstant):
                     result += self.render_processor(text[start_val:end_val])
                     get_next()
                 elif macro_val == "br":
-                    result += "<br/ >"
+                    result += "<br />"
                     get_next()
 
             else:
@@ -693,6 +703,8 @@ class NamuMark(NamuMarkConstant):
             if tmp == r:
                 raise Exception("INFINITY LOOF:::{}번째 문자에서 문제 발생. ({},{})".format(r, mx, new_macros[mx]))
 
+        # if text == self.WIKI_TEXT:
+        print('LOOPOUT', r, len(text))
         result += text[r:]  #나머지는 파싱 안 되므로 그냥 더해줌.
 
         return result
@@ -770,8 +782,10 @@ class NamuMark(NamuMarkConstant):
 
     # 헤드라인용 처리
     def header_processor(self, text: str):
-        # 우선 나무위키와 미디어위키의 헤딩 기호는 동일하므로 같은 결과 출력
-        res = text
+        # 우선 나무위키와 미디어위키의 헤딩 기호는 동일한 점을 이용함.
+        header_level = min(list(map(len, re.findall(r"(^=+|=+$)", text))))
+        inner_text = re.match(r"(^=+)(.*?)(=+$)", text).group(2).strip()
+        res = "="*header_level + f" {self.to_mw(inner_text)} " + "="*header_level + "\n"
 
         # 이전 문단이 숨김 패턴이 있는지 확인
         if self.hiding_header:
@@ -842,12 +856,12 @@ class NamuMark(NamuMarkConstant):
         # HTML
         if re.match(r"{{{#!html ((.|\n)*)}}}", text, re.MULTILINE):
             inner_text = re.match(r"{{{#!html ((.|\n)*)}}}", text, re.MULTILINE).group(1)
-            return "<div>"+inner_text + "</div>"
+            return "<div>\n"+inner_text + "\n</div>"
         # wiki
         elif re.match(r"{{{#!wiki (.*?)\n((.|\n)*)}}}", text, re.MULTILINE):
             inner_tag = re.match(r"{{{#!wiki (.*?)\n((.|\n)*)}}}", text, re.MULTILINE).group(1)
             inner_content = re.match(r"{{{#!wiki (.*?)\n((.|\n)*)}}}", text, re.MULTILINE).group(2)
-            return f"<div {inner_tag}>{self.to_mw(inner_content)}</div>"
+            return f"<div {inner_tag}>\n{self.to_mw(inner_content)}\n</div>"
 
         # folding
         elif re.match(r"{{{#!folding (.*?)\n((.|\n)*)}}}", text, re.MULTILINE):
@@ -879,7 +893,7 @@ class NamuMark(NamuMarkConstant):
 
         # pre/nowiki
         elif re.match(r"{{{(.|\n)*}}}", text):
-            print(text)
+            # print(text)
             if text.find('\n') == -1:
                 remaining_text = re.match(r"{{{(.*)}}}", text).group(1)
                 return f"<nowiki>{remaining_text}</nowiki>"
@@ -937,7 +951,7 @@ class NamuMark(NamuMarkConstant):
                     tgn_total = tgn_total[:-1] + "*" if tbl['type'] == "ul" else \
                         (tgn_total[:-1] + "#" if tbl['type'] == 'ol class="decimal"' else tgn_total)  # type이 following이면 바뀌지 않는다.
                     tgn = tbl['type'] if tbl['type'] != 'dd' else tgn
-                    res += tgn_total + self.to_mw(tbl['preparsed']) + "\n"  if tbl['type'] != 'following' else \
+                    res += tgn_total + self.to_mw(tbl['preparsed']) + "\n"  if tbl['type'] != 'dd' else \
                         "<br />"+self.to_mw(tbl['preparsed']) + "\n"  # type이 following이면 br태그만 앞에 추가
 
                 # 레벨 숫자가 앞의 숫자보다 작음,
@@ -945,6 +959,7 @@ class NamuMark(NamuMarkConstant):
                     # 우선 기호부터 확인해보자
                     tgn_total_level = tgn_total[tbl['level'] - 1]  # 해당 단계에서 심볼부터 확인
                     tgn_new_symbol_obj = {'*': 'ul', '#': 'ol class="decimal"'}
+                    new_tgn = ""
                     # tbl_type이 dd일 때는 따로 분류
                     if tbl['type'] == 'dd':
                         tgn_total = tgn_total[:tbl['level']]
@@ -956,7 +971,7 @@ class NamuMark(NamuMarkConstant):
                         tgn_total = tgn_total[:tbl['level']]
                     else:
                         tgn_total = tgn_total[:tbl['level'] - 1] + "*" if tbl['type'] == 'ul' \
-                    else (tgn_total[:tbl['level'] - 1] + "#" if tbl['type'] == 'ol class="decimal"' else tgn_total[:tbl['level'] - 1] + ":")
+                    else (tgn_total[:tbl['level'] - 1] + "#")
 
                     lvl = tbl['level']
                     tgn = tbl['type'] if tbl['type'] != 'dd' else new_tgn
@@ -972,6 +987,7 @@ class NamuMark(NamuMarkConstant):
                     tgn = tbl['type'] if tbl['type'] != 'dd' else tgn
                     if tbl['type'] != 'dd':
                         # 태그 닫기
+                        res += f"</{tgn[0:2]}>\n"
                         res += f"</{tgn[0:2]}>\n"
                         open_tag_list[-1] = tgn
                         res += f"<{tbl['type']}>\n"
@@ -1203,7 +1219,7 @@ class NamuMark(NamuMarkConstant):
     # 블록 파싱 함수
     # 우선 [br]태그로 다음 줄로 넘기는 방식은 사용하지 않으며, 맨 앞에 >가 있다는 것을 보증할 때에만 사용
     def bq_parser(self, text):
-        print('function_start!!!')
+        # print('function_start!!!')
         res = ''
         open_tag = '<blockquote style="border: 1px dashed grey; border-left: 3px solid #4188f1; padding:2px; margin:5px;">'
         close_tag = '</blockquote>'
@@ -1211,8 +1227,8 @@ class NamuMark(NamuMarkConstant):
         idx = 0  # 첫 인덱스
         tmp_block = ''  # blockquote로 묶을 수 있는 부분인지 확인할 것.
         tmp_etc = ""  # blockquote 바깥의 부분
-        print("text_wo_bq: ", text_wo_bq)
-        print()
+        # print("text_wo_bq: ", text_wo_bq)
+        # print()
         while idx < len(text_wo_bq):
             # 첫 번째 개행 위치 찾기
             idx1 = text_wo_bq[idx:].find('\n')
@@ -1239,28 +1255,28 @@ class NamuMark(NamuMarkConstant):
 
             # 마지막줄일 때 실행
             if idx1 == -1 or idx == len(text_wo_bq):
-                print('endL--')
+                # print('endL--')
                 tmp_line = text_wo_bq[idx:]
-                print("tmp_line : ", tmp_line, idx)
+                # print("tmp_line : ", tmp_line, idx)
                 if re.match(r">(.*?)", tmp_line):
                     if tmp_etc != "":
                         res += self.to_mw(tmp_etc)
-                        print("tmp_etc : ", tmp_etc)
+                        # print("tmp_etc : ", tmp_etc)
                         tmp_etc = ""
                     tmp_block += tmp_line
-                    print("tmp_block: ", tmp_block)
+                    # print("tmp_block: ", tmp_block)
                     res += self.bq_parser(tmp_block)
                 else:
                     if tmp_block != "":
                         res += self.bq_parser(tmp_block[:-1]) + '\n'  # 마지막줄이 아니므로 마지막 개행 기호 지우고 개행기호 붙이기
-                        print("tmp_block : ", tmp_block)
+                        # print("tmp_block : ", tmp_block)
                         tmp_block = ""
                     tmp_etc += tmp_line
-                    print("tmp_etc: ", tmp_etc)
+                    # print("tmp_etc: ", tmp_etc)
                     res += self.to_mw(tmp_etc)
                 idx = len(text_wo_bq)
 
-        print('function_end')
+        # print('function_end')
         return open_tag + '\n' + res + '\n' + close_tag
 
     # 표 매크로 함수
@@ -1356,7 +1372,7 @@ class NamuMark(NamuMarkConstant):
             for key in cell_css:
                 if cell_css[key] != "":
                     style_text += '{}:{};'.format(key, cell_css[key])
-            style_text = 'style="{}"'.format(style_text) if style_text != "" else ""
+            style_text = ' style="{}"'.format(style_text) if style_text != "" else ""
             res = res + style_text + "|" if len(res) > 2 or style_text != "" else "\n|"
 
             remain_pattern = re.match(r"(<[^>\n]+>)+(.*)", cell_text).group(2)
@@ -1415,23 +1431,23 @@ class NamuMark(NamuMarkConstant):
             for key in row_css:
                 if row_css[key] != "":
                     style_text += '{}:{};'.format(key, row_css[key])
-            style_text = 'style="{}"'.format(style_text) if style_text != "" else ""
+            style_text = ' style="{}"'.format(style_text) if style_text != "" else ""
             result_row = result_row.replace('|-', '|-{}'.format(style_text))
             result += result_row
-            print('REMAINING - DEBUG')
-            print("".join(text_row[idx + 1:]))
+            # print('REMAINING - DEBUG')
+            # print("".join(text_row[idx + 1:]))
 
         style_text = ''
         for key in table_css:
             if table_css[key] != "":
                 style_text += '{}:{};'.format(key, table_css[key])
-        style_text = 'style="{}"'.format(style_text) if style_text != "" else ""
+        style_text = ' style="{}"'.format(style_text) if style_text != "" else ""
         if style_text != "":
             result = result.replace('class="wikitable"', 'class="wikitable" {}'.format(style_text))
 
         result += "\n|}"
 
         text = result
-        print(text)
+        # print(text)
         return result
 
