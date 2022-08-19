@@ -624,13 +624,22 @@ class NamuMark(NamuMarkConstant):
 
         new_macros = []
         # macros_position은 닫히는 순서대로 정렬하므로 바깥 부분을 포괄하기 위해서는 늦게 닫히는 애들 기준으로 정리
+
+        i = len(text) -1
         for val in macros[::-1]:
-            inclusion = False
-            for x in new_macros:
-                if val[1] >= x[1] and val[2] <=x[2]:
-                    inclusion = True
-            if not inclusion:
-                new_macros.append(val) # 뒤에서부터 추가
+            if i >= val[2]:
+                new_macros.append(val)
+                i = val[1]
+            if i == 0:
+                break
+
+        # for val in macros[::-1]:
+        #     inclusion = False
+        #     for x in new_macros:
+        #         if val[1] >= x[1] and val[2] <=x[2]:
+        #             inclusion = True
+        #     if not inclusion:
+        #         new_macros.append(val) # 뒤에서부터 추가
 
         new_macros = new_macros[::-1] # 순서 뒤집기.
         if text == self.WIKI_TEXT:
@@ -643,10 +652,9 @@ class NamuMark(NamuMarkConstant):
         # MACRO_TEXT_PROCESSOR = ["bold-italic", "bold", "italic", "underline",
         #                         "strike", "strike2", "sup", "sub", "nowiki"]
 
-        tmp = 0
-
-        while r < len(text) and mx < len(new_macros):
+        while mx < len(new_macros):
             tmp = r
+            # print("TEST:::", r, text, len(text), new_macros, len(new_macros), mx)
             start_val = new_macros[mx][1]
             end_val = new_macros[mx][2]
             if r == start_val:
@@ -704,7 +712,7 @@ class NamuMark(NamuMarkConstant):
                 raise Exception("INFINITY LOOF:::{}번째 문자에서 문제 발생. ({},{})".format(r, mx, new_macros[mx]))
 
         # if text == self.WIKI_TEXT:
-        print('LOOPOUT', r, len(text))
+        # print('LOOPOUT', r, len(text))
         result += text[r:]  #나머지는 파싱 안 되므로 그냥 더해줌.
 
         return result
@@ -858,10 +866,12 @@ class NamuMark(NamuMarkConstant):
             inner_text = re.match(r"{{{#!html ((.|\n)*)}}}", text, re.MULTILINE).group(1)
             return "<div>\n"+inner_text + "\n</div>"
         # wiki
-        elif re.match(r"{{{#!wiki (.*?)\n((.|\n)*)}}}", text, re.MULTILINE):
-            inner_tag = re.match(r"{{{#!wiki (.*?)\n((.|\n)*)}}}", text, re.MULTILINE).group(1)
-            inner_content = re.match(r"{{{#!wiki (.*?)\n((.|\n)*)}}}", text, re.MULTILINE).group(2)
-            return f"<div {inner_tag}>\n{self.to_mw(inner_content)}\n</div>"
+        elif re.match(r"{{{#!wiki(.*?)?\n((.|\n)*)}}}", text, re.MULTILINE):
+            inner_tag_pre = re.match(r"{{{#!(wiki(.*?))\n((.|\n)*)}}}", text, re.MULTILINE).group(1)
+            inner_tag = re.search("wiki(.*)", inner_tag_pre)
+            inner_content = re.match(r"{{{#!wiki(.*?)\n((.|\n)*)}}}", text, re.MULTILINE).group(2)
+            return f"<div{inner_tag.group(1)}>\n{self.to_mw(inner_content)}\n</div>" if inner_tag else \
+                 f"<div>\n{self.to_mw(inner_content)}\n</div>"
 
         # folding
         elif re.match(r"{{{#!folding (.*?)\n((.|\n)*)}}}", text, re.MULTILINE):
@@ -1235,12 +1245,12 @@ class NamuMark(NamuMarkConstant):
             # 개행할 게 남아있으면
             if idx1 > -1:
                 tmp_line = text_wo_bq[idx:idx + idx1 + 1]
-                print("tmp_line : ", tmp_line, idx)
+                # print("tmp_line : ", tmp_line, idx)
                 # 만약 여전히 블록 안에 있을 때
                 if re.match(r">(.*?)\n", tmp_line):
                     if tmp_etc != "":
                         res += self.to_mw(tmp_etc)
-                        print("tmp_etc : ", tmp_etc)
+                        # print("tmp_etc : ", tmp_etc)
                         tmp_etc = ""
                     tmp_block += tmp_line
                 # blockquote 안에 없는 부분이면
@@ -1248,7 +1258,7 @@ class NamuMark(NamuMarkConstant):
                     if tmp_block != "":
                         res += self.bq_parser(tmp_block[:-1]) + '\n'  # 마지막줄이 아니므로 마지막 개행 기호 지우고 개행기호 붙이기
                         tmp_block = ""
-                        print("tmp_block : ", tmp_block)
+                        # print("tmp_block : ", tmp_block)
                     tmp_etc += tmp_line
 
                 idx = idx + idx1 + 1  # 개행문자 다음에 추가
