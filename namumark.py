@@ -625,7 +625,7 @@ class NamuMark(NamuMarkConstant):
         new_macros = []
         # macros_position은 닫히는 순서대로 정렬하므로 바깥 부분을 포괄하기 위해서는 늦게 닫히는 애들 기준으로 정리
 
-        i = len(text) -1
+        i = len(text)
         for val in macros[::-1]:
             if i >= val[2]:
                 new_macros.append(val)
@@ -862,16 +862,17 @@ class NamuMark(NamuMarkConstant):
     def render_processor(self, text: str):
 
         # HTML
-        if re.match(r"{{{#!html ((.|\n)*)}}}", text, re.MULTILINE):
+        if re.match(r"{{{#!html ((.|\n)*)}}}", text):
             inner_text = re.match(r"{{{#!html ((.|\n)*)}}}", text, re.MULTILINE).group(1)
             return "<div>\n"+inner_text + "\n</div>"
         # wiki
-        elif re.match(r"{{{#!wiki(.*?)?\n((.|\n)*)}}}", text, re.MULTILINE):
+        elif re.match(r"{{{#!(wiki(.*?)?)\n((.|\n)*)}}}", text):
             inner_tag_pre = re.match(r"{{{#!(wiki(.*?))\n((.|\n)*)}}}", text, re.MULTILINE).group(1)
             inner_tag = re.search("wiki(.*)", inner_tag_pre)
-            inner_content = re.match(r"{{{#!wiki(.*?)\n((.|\n)*)}}}", text, re.MULTILINE).group(2)
-            return f"<div{inner_tag.group(1)}>\n{self.to_mw(inner_content)}\n</div>" if inner_tag else \
-                 f"<div>\n{self.to_mw(inner_content)}\n</div>"
+            inner_content = re.match(r"{{{#!(wiki(.*?))\n((.|\n)*)}}}", text, re.MULTILINE).group(3)
+            # print('inner_content', text, inner_content, len(inner_content))
+            return f"<div{inner_tag.group(1)}>\n{self.to_mw(inner_content)}</div>" if inner_tag else \
+                 f"<div>\n{self.to_mw(inner_content)}</div>"
 
         # folding
         elif re.match(r"{{{#!folding (.*?)\n((.|\n)*)}}}", text, re.MULTILINE):
@@ -1455,7 +1456,7 @@ class NamuMark(NamuMarkConstant):
         if style_text != "":
             result = result.replace('class="wikitable"', 'class="wikitable" {}'.format(style_text))
 
-        result += "\n|}"
+        result += "\n|}\n"
 
         text = result
         # print(text)
