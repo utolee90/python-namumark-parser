@@ -918,36 +918,40 @@ class NamuMark(NamuMarkConstant):
 
         if list_table_kinds.issubset({'ul', 'ol class="decimal"', 'dd'}):
             for tbl in list_table:
-                # 레벨 숫자가 tbl보다 작을 때
+                # 레벨 숫자가 tbl보다 작을 때 - 들여쓰기 추가
                 if lvl < tbl['level']:
                     diff = tbl['level'] - lvl
                     tgn_total = tgn_total + "*" * diff if tbl['type'] == "ul" \
-                        else (tgn_total + "#" * diff if tbl['type'] == 'ol class="decimal"' else tgn_total + ":" *diff)
-                    lvl = tbl['level']
-                    tgn = tbl['type']
-                    res += tgn_total + self.to_mw(tbl['preparsed']) + "\n"
+                        else (tgn_total + "#" * diff if tbl['type'] == 'ol class="decimal"' else tgn_total)
+                    lvl = tbl['level'] if tbl['type'] != 'dd' else lvl  # type이 dd이면 레벨 유지
+                    tgn = tbl['type'] if tbl['type'] != 'dd' else tgn  # tgn이 dd이면 타입도 유지
+                    res += tgn_total + self.to_mw(tbl['preparsed']) + "\n" if tbl['type'] != 'dd' else \
+                           tgn_total + ":"*diff + self.to_mw(tbl['preparsed']) + "\n"  #dd이면
 
-                # 레벨 숫자가 앞의 숫자와 동일
+                # 레벨 숫자와 타입이 앞의 숫자와 동일
                 elif lvl == tbl['level'] and tgn == tbl['type']:
                     res += tgn_total + self.to_mw(tbl['preparsed']) + "\n"
 
                 # 레벨 숫자가 앞의 숫자와 동일, 다른 타입
                 elif lvl == tbl['level'] and tgn != tbl['type']:
                     tgn_total = tgn_total[:-1] + "*" if tbl['type'] == "ul" else \
-                        (tgn_total[:-1] + "#" if tbl['type'] == 'ol class="decimal"' else tgn_total[:-1] + ":")
-                    tgn = tbl['type']
-                    res += tgn_total + self.to_mw(tbl['preparsed']) + "\n"
+                        (tgn_total[:-1] + "#" if tbl['type'] == 'ol class="decimal"' else tgn_total)  # type이 following이면 바뀌지 않는다.
+                    tgn = tbl['type'] if tbl['type'] != 'dd' else tgn
+                    res += tgn_total + self.to_mw(tbl['preparsed']) + "\n"  if tbl['type'] != 'following' else \
+                        "<br />"+self.to_mw(tbl['preparsed']) + "\n"  # type이 following이면 br태그만 앞에 추가
 
                 # 레벨 숫자가 앞의 숫자보다 작음,
                 elif lvl > tbl['level']:
                     # 우선 기호부터 확인해보자
                     tgn_total_level = tgn_total[tbl['level'] - 1]  # 해당 단계에서 심볼부터 확인
-
-                    # 레벨 기준으로 확인
-                    if (tgn_total_level == "*" and tbl['type'] == 'ul') or (
-                            tgn_total_level == "#" and tbl['type'] == 'ol class="decimal"') or (
-                            tgn_total_level == ":" and tbl['type'] == 'dd'
-                    ):
+                    tgn_new_symbol_obj = {'*': 'ul', '#': 'ol class="decimal"'}
+                    # tbl_type이 dd일 때는 따로 분류
+                    if tbl['type'] == 'dd':
+                        tgn_total = tgn_total[:tbl['level']]
+                        new_tgn = tgn_new_symbol_obj[tgn_total_level]
+                    # 해당단계 심볼이 tbl['type'과 일치할 때
+                    elif (tgn_total_level == "*" and tbl['type'] == 'ul') or (
+                            tgn_total_level == "#" and tbl['type'] == 'ol class="decimal"') :
                         # 그냥 컷을 함.
                         tgn_total = tgn_total[:tbl['level']]
                     else:
@@ -955,7 +959,7 @@ class NamuMark(NamuMarkConstant):
                     else (tgn_total[:tbl['level'] - 1] + "#" if tbl['type'] == 'ol class="decimal"' else tgn_total[:tbl['level'] - 1] + ":")
 
                     lvl = tbl['level']
-                    tgn = tbl['type']
+                    tgn = tbl['type'] if tbl['type'] != 'dd' else new_tgn
                     res += tgn_total + self.to_mw(tbl['preparsed']) + "\n"
 
         else:
@@ -965,19 +969,28 @@ class NamuMark(NamuMarkConstant):
                     res += f"<li>{self.to_mw(tbl['preparsed'])}</li>\n"
                 # 같은 레벨, 태그명만 다를 때
                 elif lvl == tbl['level'] and tgn != tbl['type']:
-                    # 태그 닫기
-                    res += f"</{tgn[0:2]}>\n"
-                    tgn = tbl['type']
-                    open_tag_list[-1] = tgn
-                    res += f"<{tbl['type']}>\n"
-                    res += f"<li>{self.to_mw(tbl['preparsed'])}</li>\n"
+                    tgn = tbl['type'] if tbl['type'] != 'dd' else tgn
+                    if tbl['type'] != 'dd':
+                        # 태그 닫기
+                        res += f"</{tgn[0:2]}>\n"
+                        open_tag_list[-1] = tgn
+                        res += f"<{tbl['type']}>\n"
+                        res += f"<li>{self.to_mw(tbl['preparsed'])}</li>\n"
+                    else:
+                        # res의 뒷부분 </li>/n 부분을 지우고 <br/>태그 삽입
+                        res = res[:-6] + "<br />" + self.to_mw(tbl['preparsed']) + "</li>\n"
                 # 레벨값보다 수준이 더 클 때
                 elif lvl + 1 == tbl['level']:
-                    res += f"<{tbl['type']}>\n"
-                    res += f"<li>{self.to_mw(tbl['preparsed'])}</li>\n"
-                    lvl = tbl['level']
-                    tgn = tbl['type']
-                    open_tag_list.append(tbl['type'])
+                    # dd가 아니면
+                    if tbl['type'] != 'dd':
+                        lvl = tbl['level']
+                        tgn = tbl['type']
+                        res += f"<{tbl['type']}>\n"
+                        res += f"<li>{self.to_mw(tbl['preparsed'])}</li>\n"
+                        open_tag_list.append(tbl['type'])
+                    # dd아면 다른 전략 사용한다.
+                    else:
+                        res += f"<li>\n<dl>\n<dd>{self.to_mw(tbl['preparsed'])}</dd></dl></li>\n"
                 # 레벨값보다 수준이 더 작을 때
                 elif lvl > tbl['level']:
                     for tn in open_tag_list[:tbl['level'] - 1:-1]:
@@ -986,9 +999,9 @@ class NamuMark(NamuMarkConstant):
                     open_tag_list = open_tag_list[0:tbl['level']]
                     lvl = tbl['level']
 
-                    if open_tag_list[-1] == tbl['type']:
+                    if open_tag_list[-1] == tbl['type'] or tbl['type'] == 'dd':
                         res += f"<li>{self.to_mw(tbl['preparsed'])}</li>\n"
-                        tgn = tbl['type']
+                        tgn = tbl['type'] if tbl['type'] != 'dd' else open_tag_list[-1]
                     else:
                         res += f"</{open_tag_list[-1][0:2]}>\n"
                         res += f"<{tbl['type']}>\n"
@@ -1018,7 +1031,7 @@ class NamuMark(NamuMarkConstant):
                     res['type'] = tg[1]
                     res['preparsed'] = text[spacing + 2:]
                     break
-            # 공백이 있을 때 사용.
+            # 공백이 있을 때 사용. - 위의 파서를 따른다.
             else:
                 res['type'] = 'dd'
                 res['preparsed'] = text[spacing:]
