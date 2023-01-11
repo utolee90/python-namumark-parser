@@ -1,6 +1,7 @@
 import re
 import json
 
+
 # from template import WEB_COLOR_LIST
 
 
@@ -260,17 +261,17 @@ class NamuMark(NamuMarkConstant):
             open_val = text.find(opened, i)
             close_val = text.find(closed, i)
 
-            if open_val < close_val and open_val > -1:
+            if close_val > open_val > -1:
                 tmp_stack.append(open_val)
                 i = open_val + len(opened)
             elif len(tmp_stack) > 0:
                 starting = tmp_stack.pop()
-                res.append([starting, close_val+len(closed)])
+                res.append([starting, close_val + len(closed)])
                 i = close_val + len(closed)
             else:
                 i += 1
 
-        return (res, tmp_stack)
+        return res, tmp_stack
 
     # 정규표현식으로 갇힌 부분 잡아내기
     @staticmethod
@@ -287,7 +288,7 @@ class NamuMark(NamuMarkConstant):
 
         txt_lines = list(map(lambda x: x + '\n', text.split('\n')))  # 글을 출력하기
         txt_lines[-1] = txt_lines[-1][:-1]  # 마지막 \n 지우기
-        txt_position = [len("".join(txt_lines[:k+1])) for k, val in enumerate(txt_lines)]  # 글의 위치값
+        txt_position = [len("".join(txt_lines[:k + 1])) for k, val in enumerate(txt_lines)]  # 글의 위치값
 
         res = []  # 형식 바꾸기. 각 원소를 value: [종류, 시작, 끝]으로 재정의. 이유는 sort 하기 쉽게 처리하기 위해서
         line_res = []  # 줄 단위 res
@@ -343,7 +344,7 @@ class NamuMark(NamuMarkConstant):
 
                         if len(line_res) == 0 or line_res[-1][0] != "list" or line_res[-1][2] != ln:
                             # 처음에는 문장기호가 있어야 한다.
-                            if re.match(r"\u0020+(\*|1\.|A\.|I\.|i\.)",cont):
+                            if re.match(r"\u0020+(\*|1\.|A\.|I\.|i\.)", cont):
                                 line_res.append(['list', ln, ln + 1])
                             else:
                                 # 한줄 띄우기 인식
@@ -355,12 +356,10 @@ class NamuMark(NamuMarkConstant):
                             line_res[-1][2] += 1
                     else:
                         # 한줄 띄우기 인식
-                        if 'table' not in list(map(lambda x: x[0], macro_line_stack)) and ln>0 and  \
-                            (len(line_res) == 0 or line_res[-1][2] != ln):
-                            if cont != "\n" and txt_lines[ln-1] !="\n":
-                                res.append(['br', txt_position[ln -1]-1, txt_position[ln-1]])
-
-
+                        if 'table' not in list(map(lambda x: x[0], macro_line_stack)) and ln > 0 and \
+                                (len(line_res) == 0 or line_res[-1][2] != ln):
+                            if cont != "\n" and txt_lines[ln - 1] != "\n":
+                                res.append(['br', txt_position[ln - 1] - 1, txt_position[ln - 1]])
 
         render_list = self.open_close(text, "{{{", "}}}")[0]  # 렌더링 목록
         link_list = self.open_close(text, "[[", "]]")[0]  # 링크 리스트
@@ -641,7 +640,7 @@ class NamuMark(NamuMarkConstant):
         #     if not inclusion:
         #         new_macros.append(val) # 뒤에서부터 추가
 
-        new_macros = new_macros[::-1] # 순서 뒤집기.
+        new_macros = new_macros[::-1]  # 순서 뒤집기.
         if text == self.WIKI_TEXT:
             with open('new_macro.txt', 'w+', encoding='utf8') as J:
                 json.dump(new_macros, J)
@@ -659,11 +658,13 @@ class NamuMark(NamuMarkConstant):
             end_val = new_macros[mx][2]
             if r == start_val:
                 macro_val = new_macros[mx][0]
+
                 # r, mx 바꿔주기
                 def get_next():
                     nonlocal r, mx
                     r = end_val
                     mx += 1
+
                 # 매크로 값에 따라 정의하기
                 if macro_val == "header":
                     result += self.header_processor(text[start_val:end_val])
@@ -713,10 +714,9 @@ class NamuMark(NamuMarkConstant):
 
         # if text == self.WIKI_TEXT:
         # print('LOOPOUT', r, len(text))
-        result += text[r:]  #나머지는 파싱 안 되므로 그냥 더해줌.
+        result += text[r:]  # 나머지는 파싱 안 되므로 그냥 더해줌.
 
         return result
-
 
     # 헤딩 구조로 문서 나누어 분석하기. structure
     def title_structure(self, text: str, title=""):
@@ -793,7 +793,7 @@ class NamuMark(NamuMarkConstant):
         # 우선 나무위키와 미디어위키의 헤딩 기호는 동일한 점을 이용함.
         header_level = min(list(map(len, re.findall(r"(^=+|=+$)", text))))
         inner_text = re.match(r"(^=+)(.*?)(=+$)", text).group(2).strip()
-        res = "="*header_level + f" {self.to_mw(inner_text)} " + "="*header_level + "\n"
+        res = "=" * header_level + f" {self.to_mw(inner_text)} " + "=" * header_level + "\n"
 
         # 이전 문단이 숨김 패턴이 있는지 확인
         if self.hiding_header:
@@ -828,32 +828,32 @@ class NamuMark(NamuMarkConstant):
     def text_processor(self, text: str):
         # 굵게 기울임 - 글자 바꾸지 않기
         if re.match(r"'''''", text):
-            return "'''''"+self.to_mw(text[5:-5] if text[-5:] == "'''''" else text[5:])+"'''''"
+            return "'''''" + self.to_mw(text[5:-5] if text[-5:] == "'''''" else text[5:]) + "'''''"
         # 굵게 - 글짜 바꾸지 않기
         elif re.match(r"'''", text):
-            return "'''"+self.to_mw(text[3:-3] if text[-3:] == "'''" else text[3:])+"'''"
+            return "'''" + self.to_mw(text[3:-3] if text[-3:] == "'''" else text[3:]) + "'''"
         # 기울임
         elif re.match(r"''", text):
-            return "''"+self.to_mw(text[2:-2] if text[-2:] == "''" else text[2:])+"''"
+            return "''" + self.to_mw(text[2:-2] if text[-2:] == "''" else text[2:]) + "''"
         # 밑줄
         elif re.match(r"__", text):
-            return "<u>"+self.to_mw(text[2:-2] if text[-2:] == "__" else text[2:])+"</u>"
+            return "<u>" + self.to_mw(text[2:-2] if text[-2:] == "__" else text[2:]) + "</u>"
         # 취소선
         elif re.match(r"~~", text):
-            return "<del>"+self.to_mw(text[2:-2] if text[-2:] == "~~" else text[2:])+"</del>"
+            return "<del>" + self.to_mw(text[2:-2] if text[-2:] == "~~" else text[2:]) + "</del>"
         # 취소선2
         elif re.match(r"--", text):
             closed = text[2:].find("--")
-            return "<del>"+self.to_mw(text[2:-2] if text[-2:] == "--" else text[2:])+"</del>"
+            return "<del>" + self.to_mw(text[2:-2] if text[-2:] == "--" else text[2:]) + "</del>"
         # 위첨자
         elif re.match(r"\^\^", text):
-            return "<sup>"+self.to_mw(text[2:-2] if text[-2:] == "^^" else text[2:])+"</sup>"
+            return "<sup>" + self.to_mw(text[2:-2] if text[-2:] == "^^" else text[2:]) + "</sup>"
         # 아래첨자
         elif re.match(r",,", text):
-            return "<sub>"+self.to_mw(text[2:-2] if text[-2:] == ",," else text[2:])+"</sub>"
+            return "<sub>" + self.to_mw(text[2:-2] if text[-2:] == ",," else text[2:]) + "</sub>"
         # 문법 리터럴
         elif re.match(r"{{{", text):
-            return "<nowiki>"+self.to_mw(text[3:-3] if text[-3:] == "}}}" else text[3:])+"</nowiki>"
+            return "<nowiki>" + self.to_mw(text[3:-3] if text[-3:] == "}}}" else text[3:]) + "</nowiki>"
         # 나머지
         else:
             return self.to_mw(text)
@@ -864,7 +864,7 @@ class NamuMark(NamuMarkConstant):
         # HTML
         if re.match(r"{{{#!html ((.|\n)*)}}}", text):
             inner_text = re.match(r"{{{#!html ((.|\n)*)}}}", text, re.MULTILINE).group(1)
-            return "<div>\n"+inner_text + "\n</div>"
+            return "<div>\n" + inner_text + "\n</div>"
         # wiki
         elif re.match(r"{{{#!(wiki(.*?)?)\n((.|\n)*)}}}", text):
             inner_tag_pre = re.match(r"{{{#!(wiki(.*?))\n((.|\n)*)}}}", text, re.MULTILINE).group(1)
@@ -872,7 +872,7 @@ class NamuMark(NamuMarkConstant):
             inner_content = re.match(r"{{{#!(wiki(.*?))\n((.|\n)*)}}}", text, re.MULTILINE).group(3)
             # print('inner_content', text, inner_content, len(inner_content))
             return f"<div{inner_tag.group(1)}>\n{self.to_mw(inner_content)}</div>" if inner_tag else \
-                 f"<div>\n{self.to_mw(inner_content)}</div>"
+                f"<div>\n{self.to_mw(inner_content)}</div>"
 
         # folding
         elif re.match(r"{{{#!folding (.*?)\n((.|\n)*)}}}", text, re.MULTILINE):
@@ -891,7 +891,7 @@ class NamuMark(NamuMarkConstant):
             color = re.match(r"{{{#([A-Za-z0-9]+)(,[A-Za-z0-9]+)? ", text).group(1)
             content = re.match(r"{{{#([A-Za-z0-9]+)(,[A-Za-z0-9]+)? ((.|\n)*)}}}", text).group(3)
             if re.match(r"[0-9a-fA-F]{3}", color) or re.match(r"[0-9a-fA-F]{6}", color):
-                color = "#"+color   # #기호 붙이기
+                color = "#" + color  # #기호 붙이기
             return f"{{{{색|{color}|{self.inner_template(self.to_mw(content))}}}}}"
 
         # size
@@ -900,7 +900,7 @@ class NamuMark(NamuMarkConstant):
             size_level = int(re.match(r"{{{([+\-])([1-5]) ", text).group(2))
             remaining = re.match(r"{{{([+\-])([1-5]) ((.|\n)*)}}}", text).group(3)
             size_tag = "big" if size_symbol == "+" else "small"
-            return f"<{size_tag}>"*size_level + self.to_mw(remaining) + f"</{size_tag}>"*size_level
+            return f"<{size_tag}>" * size_level + self.to_mw(remaining) + f"</{size_tag}>" * size_level
 
         # pre/nowiki
         elif re.match(r"{{{(.|\n)*}}}", text):
@@ -915,7 +915,6 @@ class NamuMark(NamuMarkConstant):
         # 나머지 - 파싱하지 않음.
         else:
             return text
-
 
     # 리스트 파싱
     # text는 공백 포함 목록형 나무마크 문법, offset은 공백 갯수
@@ -951,7 +950,7 @@ class NamuMark(NamuMarkConstant):
                     lvl = tbl['level'] if tbl['type'] != 'dd' else lvl  # type이 dd이면 레벨 유지
                     tgn = tbl['type'] if tbl['type'] != 'dd' else tgn  # tgn이 dd이면 타입도 유지
                     res += tgn_total + self.to_mw(tbl['preparsed']) + "\n" if tbl['type'] != 'dd' else \
-                           tgn_total + ":"*diff + self.to_mw(tbl['preparsed']) + "\n"  #dd이면
+                        tgn_total + ":" * diff + self.to_mw(tbl['preparsed']) + "\n"  # dd이면
 
                 # 레벨 숫자와 타입이 앞의 숫자와 동일
                 elif lvl == tbl['level'] and tgn == tbl['type']:
@@ -960,10 +959,11 @@ class NamuMark(NamuMarkConstant):
                 # 레벨 숫자가 앞의 숫자와 동일, 다른 타입
                 elif lvl == tbl['level'] and tgn != tbl['type']:
                     tgn_total = tgn_total[:-1] + "*" if tbl['type'] == "ul" else \
-                        (tgn_total[:-1] + "#" if tbl['type'] == 'ol class="decimal"' else tgn_total)  # type이 following이면 바뀌지 않는다.
+                        (tgn_total[:-1] + "#" if tbl[
+                                                     'type'] == 'ol class="decimal"' else tgn_total)  # type이 following이면 바뀌지 않는다.
                     tgn = tbl['type'] if tbl['type'] != 'dd' else tgn
-                    res += tgn_total + self.to_mw(tbl['preparsed']) + "\n"  if tbl['type'] != 'dd' else \
-                        "<br />"+self.to_mw(tbl['preparsed']) + "\n"  # type이 following이면 br태그만 앞에 추가
+                    res += tgn_total + self.to_mw(tbl['preparsed']) + "\n" if tbl['type'] != 'dd' else \
+                        "<br />" + self.to_mw(tbl['preparsed']) + "\n"  # type이 following이면 br태그만 앞에 추가
 
                 # 레벨 숫자가 앞의 숫자보다 작음,
                 elif lvl > tbl['level']:
@@ -977,12 +977,12 @@ class NamuMark(NamuMarkConstant):
                         new_tgn = tgn_new_symbol_obj[tgn_total_level]
                     # 해당단계 심볼이 tbl['type'과 일치할 때
                     elif (tgn_total_level == "*" and tbl['type'] == 'ul') or (
-                            tgn_total_level == "#" and tbl['type'] == 'ol class="decimal"') :
+                            tgn_total_level == "#" and tbl['type'] == 'ol class="decimal"'):
                         # 그냥 컷을 함.
                         tgn_total = tgn_total[:tbl['level']]
                     else:
                         tgn_total = tgn_total[:tbl['level'] - 1] + "*" if tbl['type'] == 'ul' \
-                    else (tgn_total[:tbl['level'] - 1] + "#")
+                            else (tgn_total[:tbl['level'] - 1] + "#")
 
                     lvl = tbl['level']
                     tgn = tbl['type'] if tbl['type'] != 'dd' else new_tgn
@@ -1067,7 +1067,7 @@ class NamuMark(NamuMarkConstant):
     # 각주 처리 - 각주 안에 각주가 있을 때 처리 추가
     def ref_processor(self, text: str):
         if re.match(r"\[\*", text):
-            ref_name = re.match(r"\[\*([^\s\]]*?)", text).group(1) # 각주 이름. *앞에 표시된 부분
+            ref_name = re.match(r"\[\*([^\s\]]*?)", text).group(1)  # 각주 이름. *앞에 표시된 부분
             # 공백이 있을 때 - 각주의 내용이 있음.
             if re.match(r"\[\*([^\s\]]*?) ", text):
                 ref_val = re.match(r"\[\*([^\s\]]*?) (.*)(]|$)", text).group(2)  # 각주 내용
@@ -1077,7 +1077,6 @@ class NamuMark(NamuMarkConstant):
                 return f"<ref name=\"{ref_name}\"/>"
         else:
             return self.to_mw(text)
-
 
     # [매크로] 형식의 함수 처리하기
     def macro_processor(self, text: str):
@@ -1159,7 +1158,7 @@ class NamuMark(NamuMarkConstant):
             conts_type = re.match(r"(youtube|nicovideo)\((.*)\)", inner_text).group(1)
             conts = re.match(r"(youtube|nicovideo)\((.*)\)", inner_text).group(2)
             conts_list = conts.split(',')
-            conts_id = conts_list[0].strip() #유튜브 id
+            conts_id = conts_list[0].strip()  # 유튜브 id
             conts_width = ""
             conts_height = ""
             for txt in conts_list[1:]:
@@ -1217,7 +1216,7 @@ class NamuMark(NamuMarkConstant):
             paragraph_name = self.find_paragraph_by_index(paragraph_list)
             # article이 비어있거나 문서명과 같을 때는
             if article == "" or article == self.WIKI_PAGE:
-                return f"[[#{paragraph_name}]]" if text == ""\
+                return f"[[#{paragraph_name}]]" if text == "" \
                     else f"[[#{paragraph_name}|{self.to_mw(text)}]]"
             # article이 다른 거면 문단명을 알 수 없으므로 일단 파싱하지 않는다.
             else:
@@ -1461,4 +1460,3 @@ class NamuMark(NamuMarkConstant):
         text = result
         # print(text)
         return result
-
