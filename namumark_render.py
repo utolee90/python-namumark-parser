@@ -2,18 +2,14 @@
 
 from .opennamu_func_tool import *
 
-
 class class_do_render_namumark:
-    def __init__(self, curs, doc_name, doc_data, doc_set, lang_data):
-        self.curs = curs
+    def __init__(self, doc_name, doc_data, doc_set, curs=''):
+        # self.curs = curs
 
         self.doc_data = doc_data.replace('\r', '')
         self.doc_name = doc_name
         self.doc_set = doc_set
         self.doc_include = self.doc_set['doc_include'] if 'doc_include' in self.doc_set else ''
-
-        self.lang_data = lang_data
-        self.ip = ip_check()
 
         self.data_temp_storage = {}
         self.data_temp_storage_count = 0
@@ -34,11 +30,6 @@ class class_do_render_namumark:
         self.render_data = '<back_br>\n' + self.render_data + '\n<front_br>'
         self.render_data_js = ''
 
-    def get_tool_lang(self, name):
-        if name in self.lang_data:
-            return self.lang_data[name]
-        else:
-            return name + ' (RENDER LANG)'
 
     def get_tool_js_safe(self, data):
         data = data.replace('\n', '\\\\n')
@@ -48,6 +39,7 @@ class class_do_render_namumark:
 
         return data
 
+    # css 치환 함수
     def get_tool_css_safe(self, data):
         return data.replace(';', '')
 
@@ -178,8 +170,8 @@ class class_do_render_namumark:
     def do_render_text(self):
         # <b> function
         if ip_or_user(self.ip) == 0:
-            self.curs.execute(db_change('select data from user_set where name = "main_css_bold" and id = ?'), [self.ip])
-            db_data = self.curs.fetchall()
+            # self.curs.execute(db_change('select data from user_set where name = "main_css_bold" and id = ?'), [self.ip])
+            # db_data = self.curs.fetchall()
             bold_user_set = db_data[0][0] if db_data else 'normal'
         else:
             bold_user_set = flask.session['main_css_bold'] if 'main_css_bold' in flask.session else 'normal'
@@ -246,10 +238,10 @@ class class_do_render_namumark:
 
         # <s> function
         if ip_or_user(self.ip) == 0:
-            self.curs.execute(db_change('select data from user_set where name = "main_css_strike" and id = ?'),
-                              [self.ip])
-            db_data = self.curs.fetchall()
-            strike_user_set = db_data[0][0] if db_data else 'normal'
+            # self.curs.execute(db_change('select data from user_set where name = "main_css_strike" and id = ?'),
+            #                  [self.ip])
+            # db_data = self.curs.fetchall()
+            # strike_user_set = db_data[0][0] if db_data else 'normal'
         else:
             strike_user_set = flask.session['main_css_strike'] if 'main_css_strike' in flask.session else 'normal'
 
@@ -525,7 +517,7 @@ class class_do_render_namumark:
             elif name_data == 'toc':
                 return '<toc_no_auto>'
             elif name_data == 'ruby':
-                data = re.findall(macro_split_regex, match[1])0
+                data = re.findall(macro_split_regex, match[1])
 
                 # get option
                 main_text = ''
@@ -751,8 +743,8 @@ class class_do_render_namumark:
                         link_main = self.get_tool_data_restore(link_main, do_type='slash')
                         link_main = html.unescape(link_main)
 
-                        self.curs.execute(db_change("select title from data where title = ?"), ['file:' + link_main])
-                        db_data = self.curs.fetchall()
+                        # self.curs.execute(db_change("select title from data where title = ?"), ['file:' + link_main])
+                        # db_data = self.curs.fetchall()
                         if db_data:
                             link_exist = ''
                             self.data_backlink += [[self.doc_name, 'file:' + link_main, 'file']]

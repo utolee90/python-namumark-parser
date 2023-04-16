@@ -1,0 +1,23 @@
+namumark_render
+
+class_do_render_namumark -=> NamuMark
+
+init
+doc_name -> 문서 제목
+doc_data -> 문서 내용
+doc_set -> 오브젝트 { 'doc_include': [], }
+doc_include -> 포함하는 문서 목록
+
+data_temp_storage
+data_temp_storage_count
+
+data_backlink
+data_include
+
+data_math_count
+data_redirect
+
+data_toc
+data_footnote
+data_category -> 분류
+data_category_list -> 리스트

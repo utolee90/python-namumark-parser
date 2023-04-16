@@ -241,15 +241,6 @@ class NamuMark(NamuMarkConstant):
         self.parsed = self.to_mw(self.WIKI_PAGE['text'])
         return self.parsed
 
-    # HTML 바꾸기
-    def to_html(self, text: str):
-        res = ""
-
-        # 넘겨주기 형식 - 빈문서로 처리
-        if re.fullmatch(r"#(?:redirect|넘겨주기) (.+)", text, flags=re.I):
-            return ""
-
-        # 정의중입니다.
 
     # 여닫기 함수 재정의
     @staticmethod
@@ -379,16 +370,16 @@ class NamuMark(NamuMarkConstant):
         render_remainder = self.open_close(text, "{{{", "}}}")[1]
         pre_macro_remainder = self.open_close(text, "[", "]")[1]
 
-        # list 정의
-        list_bolditalic = self.list_part(text, r"'''''[^'].*?'''''")
-        list_bold = self.list_part(text, r"'''[^'].*?'''")
-        list_italic = self.list_part(text, r"''[^'].*?''")
-        list_underline = self.list_part(text, r"__[^_].*?__")
-        list_strike = self.list_part(text, r"--[^\-].*?--")
-        list_strike2 = self.list_part(text, r"~~[^~].*?~~")
-        list_super = self.list_part(text, r"\^\^[^\^].*?\^\^")
-        list_sub = self.list_part(text, r",,[^,].*?,,")
-        list_text = list_bolditalic + list_bold + list_italic + list_underline + list_strike + list_strike2 + list_super + list_sub
+        # text 정의
+        list_bolditalic = self.list_part(text, r"'''''((?:(?!''''').)+)'''''")
+        list_bold = self.list_part(text, r"'''((?:[^'])(?:(?!''').)+(?:[^']))'''")
+        list_italic = self.list_part(text, r"''((?:[^'])(?:(?!'').)+(?:[^']))''")
+        list_underline = self.list_part(text, r"__((?:(?!__).)+)__")
+        list_strike = self.list_part(text, r"--((?:(?!--).)+)--")
+        list_strike2 = self.list_part(text, r"~~((?:(?!~~).)+)~~")
+        list_super = self.list_part(text, r"\^\^((?:(?!\^\^).)+)\^\^")
+        list_sub = self.list_part(text, r",,((?:(?!,,).)+),,")
+        list_text = list_underline + list_strike + list_strike2 + list_super + list_sub
 
         # line_res 이용해서 결과 추출
         for cont in line_res:
@@ -417,184 +408,24 @@ class NamuMark(NamuMarkConstant):
         for cont in list_text:
             res.append(['text', cont[0], cont[1]])
 
+        # bold-italic
+        for cont in list_bolditalic:
+            res.append(['bolditalic', cont[0], cont[1]])
+
+        # bold -> bold-italic 안에 들어가지 않을 때만
+        for cont in list_bold:
+            if ['bolditalic', cont[0]-2, cont[1]+2] not in res:
+                res.append(['bold', cont[0], cont[1]])
+
+        # italic -> bold 안에 들어가지 않을 때만
+        for cont in list_italic:
+            if ['bold', cont[0]-1, cont[1]+1] not in res:
+                res.append(['italic', cont[0], cont[1]])
+
+        # 끝값이 작은 순서대로 정렬
         if len(res) > 0:
             res = sorted(res, key=lambda x: x[2])
 
-        # i = int(forced_return)  # 낱자 번호
-        #
-        # while i < txt_length:
-        #     # ln (줄 번호) 위치 선정의
-        #     ln = len(list(filter(lambda x: x < i, txt_position)))
-        #     print('DIV::::',i, ln)
-        #
-        #     # 가로선 매크로
-        #     if re.match(r"\n-{4,10}(\n|$)", text[i - 1:]):
-        #         pattern_end = re.match(r"(^|\n)-{4,10}\n", text[i - 1:]).end()
-        #         res['position'].append([i - frn, i + pattern_end - 1 - frn])
-        #         res['value'].append('hr')
-        #         i += pattern_end - 1
-        #
-        #     # 헤더 매크로
-        #     elif re.match(r"\n=.*?=\s*(\n|$)", text[i - 1:]):
-        #         pattern_end = re.match(r"\n=.*?=\s*(\n|$)", text[i - 1:]).end()
-        #         res['position'].append([i - frn, i + pattern_end - 1 - frn])
-        #         res['value'].append('header')
-        #         i += pattern_end - 1
-        #
-        #     # 주석 매크로
-        #     elif re.match(r"\n##(\n|$)", text[i - 1:]):
-        #         pattern_end = re.match(r"\n##(\n|$)", text[i - 1:]).end()
-        #         res['position'].append([i - frn, i + pattern_end -1 - frn])
-        #         res['value'].append('comment')
-        #         i += pattern_end - 1
-        #
-        #     # nowiki/pre 매크로
-        #     elif re.match(r"{{{([^#+\-]|[+\-][^12345]|#[^!0-9A-Za-z])", text[i:]):
-        #         # 줄에 있으면
-        #         # print(i, ln, txt_position, text[i:], txt_lines)
-        #         if re.search(r"}}}([^}]|$)", txt_lines[ln]):
-        #             closed_pos = re.search(r"}}}([^}]|$)", text[i:]).start()
-        #             res['position'].append([i - frn, i + closed_pos + 3 - frn])
-        #             res['value'].append('nowiki')
-        #             i += closed_pos + 3 - frn
-        #         else:
-        #             closed_pos_obj = re.search(r"}}}", text[i:])
-        #             if closed_pos_obj:
-        #                 pass
-        #             elif text[-2:] == "}}":
-        #                 text += "}"
-        #             elif text[-1] == "}":
-        #                 text += "}}"
-        #             else:
-        #                 text += "}}}"
-        #             closed_pos = re.search(r"}}}", text[i:]).start()
-        #             res['position'].append([i - frn, i + closed_pos + 3 - frn])
-        #             res['value'].append('pre')
-        #             i += closed_pos + 3 - frn
-        #
-        #     # html 매크로
-        #     elif re.match(r"{{{#!html", text[i:]):
-        #         closed_pos = re.search(r"}}}", text[i:]).start()
-        #         res['position'].append([i - frn, i + closed_pos + 3 - frn])
-        #         res['value'].append('html')
-        #         i += closed_pos + 3 - frn
-        #
-        #     # syntax/source 매크로
-        #     elif re.match(r"{{{#!(syntax|source)", text[i:]):
-        #         closed_pos = re.search(r"}}}", text[i:]).start()
-        #         res['position'].append([i - frn, i + closed_pos + 3 - frn])
-        #         res['value'].append('syntax')
-        #         i += closed_pos + 3 - frn
-        #
-        #     # 나머지
-        #     else:
-        #         # 줄의 처음에 시작하는 매크로 분석
-        #         for cri, tag1 in enumerate(self.PARSER_TAG_CR):
-        #             if re.match(tag1, text[i - 1:]):
-        #                 macro_stack.append([self.PARSER_TAG_CR_MACRO[cri], i - frn])
-        #                 i += re.match(tag1, text[i - 1:]).end() - 1
-        #                 break
-        #         else:
-        #
-        #             # linear_parser_tag 분석
-        #             for pli, tag2 in enumerate(self.PARSER_TAG_LINE):
-        #                 if re.match(tag2, text[i:]):
-        #                     if len(macro_stack) > 0 and macro_stack[-1][0] == self.PARSER_TAG_LINE_MACRO[pli]:
-        #                         macro_val = macro_stack.pop()
-        #                         res['position'].append([macro_val[1], i + 3 - frn])
-        #                         res['value'].append(self.PARSER_TAG_LINE_MACRO[pli])
-        #                         i += len(tag2)
-        #                     else:
-        #                         macro_stack.append([self.PARSER_TAG_LINE_MACRO[pli], i - frn])
-        #                         i += len(tag2)
-        #                     break
-        #
-        #             else:
-        #
-        #                 # 파서 태그 분석
-        #                 for pi, tag3 in enumerate(self.PARSER_TAG):
-        #                     if re.match(tag3, text[i:]):
-        #                         print(tag3, re.match(tag3, text[i:]).group())
-        #                         macro_stack.append([self.PARSER_TAG_MACRO[pi], i - frn])
-        #                         i += re.match(tag3, text[i:]).end()
-        #                         break
-        #                 else:
-        #                     # 닫히는 태그인지 확인해보자
-        #                     if len(macro_stack) > 0:
-        #                         cur_macro = macro_stack[-1][0]
-        #                         MACRO_RENDER_PROCESSOR = ['wiki', 'folding', 'color', 'size']
-        #
-        #                         if i < txt_length - 2 and cur_macro in MACRO_RENDER_PROCESSOR and text[
-        #                                                                                           i:i + 3] == "}}}":
-        #
-        #                             macro_val = macro_stack.pop()
-        #                             res['position'].append([macro_val[1], i + 3 - frn])
-        #                             res['value'].append(macro_val[0])
-        #                             i += 3
-        #                         elif i < txt_length - 1 and cur_macro == "link" and text[i:i + 2] == "]]":
-        #
-        #                             macro_val = macro_stack.pop()
-        #                             res['position'].append([macro_val[1], i + 2 - frn])
-        #                             res['value'].append(macro_val[0])
-        #                             i += 2
-        #                         elif cur_macro in ['ref', 'macro'] and text[i] == "]":
-        #
-        #                             macro_val = macro_stack.pop()
-        #                             res['position'].append([macro_val[1], i + 1 - frn])
-        #                             res['value'].append(macro_val[0])
-        #                             i += 1
-        #
-        #                         elif cur_macro == 'table' and re.match(r"\|\|(\n[^|]|\n$|$)", text[i:]):
-        #                             macro_val = macro_stack.pop()
-        #                             res['position'].append(
-        #                                 [macro_val[1], i + 3 - frn] if i < txt_length - 3 else [macro_val[1],
-        #                                                                                         i + 2 - frn])
-        #                             res['value'].append(macro_val[0])
-        #                             i += 3 if i < txt_length - 3 else 2
-        #
-        #                         elif cur_macro == 'list' and (
-        #                                 re.match(r"($|\n$|\n\n)", text[i:])
-        #                                 or re.match(r"\n[^\u0020]", text[i:])
-        #                                 # or re.match(r"\n\u0020*[=\-\|]", text[i:])
-        #                                 or re.match(r"\n\u0020+[^*1AIi]", text[i:])
-        #                         ):
-        #                             if re.match(r"\n\u0020+[^*1AIi]", text[i:]):
-        #                                 print('TEXT::: ', re.match(r"\n\s+[^*1AIi]", text[i:]).group(), i)
-        #                             macro_val = macro_stack.pop()
-        #                             res['position'].append([macro_val[1], i + 1 - frn])
-        #                             res['value'].append(macro_val[0])
-        #                             i += 1
-        #
-        #                         elif cur_macro == 'bq' and (
-        #                                 i == txt_length - 1 or (text[i] == '\n' and text[i + 1] != ">")):
-        #                             macro_val = macro_stack.pop()
-        #                             res['position'].append([macro_val[1], i + 1 - frn])
-        #                             res['value'].append(macro_val[0])
-        #                             i += 1
-        #
-        #                         elif cur_macro == 'comment' and (
-        #                                 i < txt_length - 2 or (text[i] == '\n' and text[i + 1:i + 3] != '##')):
-        #                             macro_val = macro_stack.pop()
-        #                             res['position'].append([macro_val[1], i + 1 - frn])
-        #                             res['value'].append(macro_val[0])
-        #                             i += 1
-        #
-        #                         elif i > 0 and text[i] == '\n' and text[i - 1] != '\n' and text[i - 1] != '\n' and set(
-        #                                 map(lambda x: x[0], macro_stack)).isdisjoint(
-        #                                 {'table', 'list', 'bq', 'comment'}):
-        #                             res['position'].append([i - frn, i + 1 - frn])
-        #                             res['value'].append('br')
-        #                             i += 1
-        #                         else:
-        #                             i += 1
-        #                     else:
-        #                         i += 1
-        #
-        #
-        # res['remain_stack'] = macro_stack
-
-        # print("RENDER_REMAINDER:::", render_remainder)
-        # print("PRE_MACRO_REMAINDER:::", pre_macro_remainder)
         return res
 
     # 미디어위키 메인함수
@@ -632,14 +463,6 @@ class NamuMark(NamuMarkConstant):
             if i == 0:
                 break
 
-        # for val in macros[::-1]:
-        #     inclusion = False
-        #     for x in new_macros:
-        #         if val[1] >= x[1] and val[2] <=x[2]:
-        #             inclusion = True
-        #     if not inclusion:
-        #         new_macros.append(val) # 뒤에서부터 추가
-
         new_macros = new_macros[::-1]  # 순서 뒤집기.
         if text == self.WIKI_TEXT:
             with open('new_macro.txt', 'w+', encoding='utf8') as J:
@@ -647,15 +470,13 @@ class NamuMark(NamuMarkConstant):
 
         r = 0
         mx = 0
-        # MACRO_RENDER_PROCESSOR = ['html', 'wiki', 'folding', 'syntax', 'color', 'size', 'pre']
-        # MACRO_TEXT_PROCESSOR = ["bold-italic", "bold", "italic", "underline",
-        #                         "strike", "strike2", "sup", "sub", "nowiki"]
 
         while mx < len(new_macros):
             tmp = r
             # print("TEST:::", r, text, len(text), new_macros, len(new_macros), mx)
             start_val = new_macros[mx][1]
             end_val = new_macros[mx][2]
+
             if r == start_val:
                 macro_val = new_macros[mx][0]
 
@@ -665,31 +486,32 @@ class NamuMark(NamuMarkConstant):
                     r = end_val
                     mx += 1
 
-                # 매크로 값에 따라 정의하기
-                if macro_val == "header":
-                    result += self.header_processor(text[start_val:end_val])
+                # 매크로 값에 따라 정의하기 - hierarchy가 필요함.
+                if macro_val == "header": # 헤더 - 무조건 실행
+                    result += self.header_processor(text[start_val:end_val]) if len(result) > 0 and result[-1] == '\n' \
+                                    else '\n' + self.header_processor(text[start_val:end_val])
                     get_next()
                 elif macro_val in ["hr", "comment"]:
-                    result += self.misc_processor(text[start_val:end_val])
+                    result += self.misc_processor(text[start_val:end_val]) if len(result) > 0 and result[-1] == '\n' \
+                                    else '\n' + self.misc_processor(text[start_val:end_val])
                     get_next()
                 elif macro_val == "list":
-                    result += self.list_parser(text[start_val:end_val])
+                    result += self.list_parser(text[start_val:end_val]) if len(result) > 0 and result[-1] == '\n' \
+                                    else '\n' + self.list_parser(text[start_val:end_val])
                     get_next()
                 elif macro_val == "table":
                     # print("TABLE_PARSER\n", text[start_val:end_val])
-                    result += self.table_parser(text[start_val:end_val])
+                    result += self.table_parser(text[start_val:end_val]) if len(result) > 0 and result[-1] == '\n' \
+                                    else '\n' + self.table_parser(text[start_val:end_val])
                     get_next()
                 elif macro_val == "bq":
-                    result += self.bq_parser(text[start_val:end_val])
+                    result += self.bq_parser(text[start_val:end_val]) if len(result) > 0 and result[-1] == '\n' \
+                                    else '\n' + self.bq_parser(text[start_val:end_val])
                     get_next()
-                elif macro_val == "text":
+                elif macro_val in ["text", "bolditalic", "bold", "italic"]:
                     result += self.text_processor(text[start_val:end_val])
                     get_next()
                 elif macro_val == "link":
-                    # use_text = text[start_val:end_val]
-                    # link_val = re.match(r"\[\[(.*?)(\|.*?)?]]", use_text).group(1)
-                    # express_cont = re.match(r"\[\[(.*?)(\|.*?)?]]", use_text).group(2) # 맨 앞에 |기호 제외
-                    # express_cont = express_cont[1:] if express_cont else ""
                     result += self.new_link_processor(text[start_val:end_val])
                     get_next()
                 elif macro_val == "macro":
@@ -928,9 +750,11 @@ class NamuMark(NamuMarkConstant):
         # 파싱 준비
         for list_line in lines:
             # 내용이 비어 있지 않을 때 처리
-            if list_line != "":
+            if re.match(r"\s+[^\s]+", list_line):
                 res_line = self.list_line_parser(list_line)
                 list_table.append(res_line)
+            elif len(list_table)>0:
+                list_table[-1]['preparsed'] +='\n'
 
         # 레벨 숫자
         lvl = 0
@@ -1457,6 +1281,4 @@ class NamuMark(NamuMarkConstant):
 
         result += "\n|}\n"
 
-        text = result
-        # print(text)
         return result
